@@ -1,0 +1,31 @@
+name: Noticias Diarias Chile
+
+on:
+  schedule:
+    # Lunes a Viernes 22:30 UTC = 18:30 CLT (UTC-4, horario invierno Chile)
+    - cron: '30 22 * * 1-5'
+  workflow_dispatch: # permite correrlo manualmente desde GitHub
+
+jobs:
+  enviar-noticias:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Instalar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: pip install requests beautifulsoup4
+
+      - name: Ejecutar script
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          OUTPUT_DIR: /tmp
+        run: python "noticias_diarias.py"
