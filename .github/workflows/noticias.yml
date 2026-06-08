@@ -6,6 +6,9 @@ on:
     - cron: '30 22 * * 1-5'
   workflow_dispatch: # permite correrlo manualmente desde GitHub
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   enviar-noticias:
     runs-on: ubuntu-latest
