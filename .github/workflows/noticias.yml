@@ -2,8 +2,8 @@ name: Noticias Diarias Chile
 
 on:
   schedule:
-    # Lunes a Viernes 22:30 UTC = 18:30 CLT (UTC-4, horario invierno Chile)
-    - cron: '30 22 * * 1-5'
+    # Lunes a Viernes 21:00 UTC = 17:00 CLT (UTC-4, horario invierno Chile)
+    - cron: '0 21 * * 1-5'
   workflow_dispatch: # permite correrlo manualmente desde GitHub
 
 env:
