@@ -7,6 +7,7 @@ Corre de lunes a viernes a las 17:00 CLT via GitHub Actions.
 import os
 import re
 import sys
+import time
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -529,11 +530,13 @@ def build_html(dollar_item: dict, articles: list, bonus: list) -> str:
 
 
 def save_html_file(html: str) -> str:
-    """Guarda el HTML como archivo en el directorio del proyecto."""
     date_str = now_chile().strftime("%Y-%m-%d")
     path = os.path.join(OUTPUT_DIR, f"noticias_{date_str}.html")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(html)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(html)
+    except Exception as e:
+        log(f"[WARN] No se pudo guardar el HTML en disco: {e}")
     return path
 
 
@@ -543,7 +546,7 @@ def save_html_file(html: str) -> str:
 
 def send_email(subject: str, html_body: str) -> None:
     if GMAIL_APP_PASSWORD in ("", "PONER_AQUI_CONTRASEÑA_DE_APP"):
-        log("[ERROR] Falta configurar GMAIL_APP_PASSWORD en noticias_diarias.py")
+        log("[ERROR] Falta configurar GMAIL_APP_PASSWORD")
         sys.exit(1)
 
     msg = MIMEMultipart("alternative")
@@ -552,13 +555,22 @@ def send_email(subject: str, html_body: str) -> None:
     msg["To"]      = RECIPIENT_EMAIL
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    with smtplib.SMTP("smtp.gmail.com", 587) as srv:
-        srv.ehlo()
-        srv.starttls()
-        srv.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        srv.sendmail(GMAIL_USER, RECIPIENT_EMAIL, msg.as_string())
+    for attempt in range(1, 4):
+        try:
+            with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as srv:
+                srv.ehlo()
+                srv.starttls()
+                srv.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                srv.sendmail(GMAIL_USER, RECIPIENT_EMAIL, msg.as_string())
+            log(f"[OK] Email enviado a {RECIPIENT_EMAIL}")
+            return
+        except Exception as e:
+            log(f"[WARN] Intento {attempt}/3 fallido al enviar email: {e}")
+            if attempt < 3:
+                time.sleep(15)
 
-    log(f"[OK] Email enviado a {RECIPIENT_EMAIL}")
+    log("[ERROR] No se pudo enviar el email después de 3 intentos.")
+    sys.exit(1)
 
 
 # ─────────────────────────────────────────────────────────
@@ -575,6 +587,14 @@ def log(msg: str) -> None:
 
 def main() -> None:
     log("=== Noticias Diarias iniciando ===")
+
+    # Guard DST: con dos crons (invierno/verano), solo ejecutar en la ventana correcta (17:xx CLT).
+    # En runs manuales (workflow_dispatch) se omite el chequeo para poder probar a cualquier hora.
+    if os.environ.get("GITHUB_EVENT_NAME") == "schedule":
+        clt_hour = now_chile().hour
+        if clt_hour != 17:
+            log(f"[INFO] Cron fuera de ventana (hora CLT actual: {clt_hour}h) — se omite esta ejecución.")
+            sys.exit(0)
 
     # 1. Dólar (siempre #1)
     log("Obteniendo dólar de cierre desde Emol…")
