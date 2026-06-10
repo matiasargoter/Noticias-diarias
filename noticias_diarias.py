@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Noticias Diarias Chile — Top 5 Economía & Política
-Corre de lunes a viernes a las 18:30 via launchd.
+Corre de lunes a viernes a las 17:00 CLT via GitHub Actions.
 """
 
 import os
@@ -11,9 +11,17 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
+
+CHILE_TZ = ZoneInfo("America/Santiago")
+
+
+def now_chile() -> datetime:
+    return datetime.now(CHILE_TZ)
+
 
 # ─────────────────────────────────────────────────────────
 # CONFIGURACIÓN  ← Lee desde env vars (GitHub Actions) o usa fallback local
@@ -76,7 +84,7 @@ def get_emol_dollar() -> dict:
     y construye el item de noticia #1.
     Fallback: mindicador.cl (Banco Central).
     """
-    today = datetime.now()
+    today = now_chile()
     date_path = f"/{today.year}/{today.month:02d}/{today.day:02d}/"
     dollar_keywords = ["dólar", "dollar", "tipo de cambio", "mercado cambiario", "divisa"]
 
@@ -150,7 +158,7 @@ def get_emol_news() -> list:
     Scrape Emol para artículos de hoy en Economía y Nacional/Política.
     Excluye artículos sobre el dólar (van en el item #1).
     """
-    today = datetime.now()
+    today = now_chile()
     date_path = f"/{today.year}/{today.month:02d}/{today.day:02d}/"
     dollar_keywords = {"dólar", "dollar", "tipo de cambio", "mercado cambiario"}
 
@@ -160,6 +168,8 @@ def get_emol_news() -> list:
 
     pages = [
         "https://www.emol.com/economia/",
+        "https://www.emol.com/noticias/Economia/",
+        "https://www.emol.com/noticias/Nacional/",
         "https://www.emol.com/",
     ]
 
@@ -317,7 +327,7 @@ def get_article_summary(url: str) -> str:
 # ─────────────────────────────────────────────────────────
 
 def date_in_spanish() -> str:
-    raw = datetime.now().strftime("%A, %d de %B de %Y")
+    raw = now_chile().strftime("%A, %d de %B de %Y")
     for en, es in {**DAYS_ES, **MONTHS_ES}.items():
         raw = raw.replace(en, es)
     return raw
@@ -520,7 +530,7 @@ def build_html(dollar_item: dict, articles: list, bonus: list) -> str:
 
 def save_html_file(html: str) -> str:
     """Guarda el HTML como archivo en el directorio del proyecto."""
-    date_str = datetime.now().strftime("%Y-%m-%d")
+    date_str = now_chile().strftime("%Y-%m-%d")
     path = os.path.join(OUTPUT_DIR, f"noticias_{date_str}.html")
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
@@ -556,7 +566,7 @@ def send_email(subject: str, html_body: str) -> None:
 # ─────────────────────────────────────────────────────────
 
 def log(msg: str) -> None:
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+    print(f"[{now_chile().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
 # ─────────────────────────────────────────────────────────
@@ -577,8 +587,7 @@ def main() -> None:
     log(f"Artículos candidatos: {len(articles)}")
 
     if not articles:
-        log("[ERROR] No se encontraron noticias para hoy. Abortando.")
-        sys.exit(1)
+        log("[WARN] No se encontraron artículos del día en Emol — se enviará correo solo con dólar y bonus.")
 
     # 3. Resúmenes (1 párrafo c/u)
     log("Obteniendo resúmenes…")
@@ -605,7 +614,7 @@ def main() -> None:
     log(f"Archivo HTML guardado: {html_path}")
 
     # 6. Enviar email
-    today_str = datetime.now().strftime("%d/%m/%Y")
+    today_str = now_chile().strftime("%d/%m/%Y")
     subject   = f"📰 Top 5 Chile | {today_str} · Dólar {dollar_item['dollar_value']}"
     log("Enviando email vía Gmail SMTP…")
     send_email(subject, html)
