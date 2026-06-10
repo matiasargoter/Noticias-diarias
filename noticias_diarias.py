@@ -588,11 +588,11 @@ def log(msg: str) -> None:
 def main() -> None:
     log("=== Noticias Diarias iniciando ===")
 
-    # Guard DST: con dos crons (invierno/verano), solo ejecutar en la ventana correcta (17:xx CLT).
+    # Guard DST: con dos crons (invierno/verano), solo ejecutar en la ventana correcta (18:xx CLT).
     # En runs manuales (workflow_dispatch) se omite el chequeo para poder probar a cualquier hora.
     if os.environ.get("GITHUB_EVENT_NAME") == "schedule":
         clt_hour = now_chile().hour
-        if clt_hour != 17:
+        if clt_hour != 18:
             log(f"[INFO] Cron fuera de ventana (hora CLT actual: {clt_hour}h) — se omite esta ejecución.")
             sys.exit(0)
 
