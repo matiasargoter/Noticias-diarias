@@ -239,41 +239,35 @@ def get_emol_news() -> list:
 
 def get_most_viewed_bonus(exclude_urls: set) -> list:
     """
-    Aproxima la sección '+ Comentando en Economía' usando el HTML estático de
-    emol.com/economia/ (carga JS-rendered los artículos destacados; el HTML
-    estático expone los artículos más recientes/relevantes en caché).
-    No filtra por fecha.
+    Obtiene los 2 artículos más comentados de la sección '+ Comentado en Economía'
+    usando la API interna de comentarios de Emol.
     """
+    import html as html_module
     bonus      = []
     seen_urls  = set(exclude_urls)
     seen_titles: set = set()
 
     try:
-        resp = requests.get("https://www.emol.com/economia/", headers=HEADERS, timeout=15)
-        soup = BeautifulSoup(resp.text, "html.parser")
+        api_url = "https://cache-comentarios.ecn.cl/Comments/Api?action=getMostCommentedPages&site=emol&siteSection=economia"
+        resp = requests.get(api_url, headers={**HEADERS, "Referer": "https://www.emol.com/economia/"}, timeout=15)
+        items = resp.json()
 
-        for a in soup.find_all("a", href=True):
-            href: str = a["href"]
-            if not href.startswith("/"):
-                continue
-            href = "https://www.emol.com" + href
-
-            if "/noticias/Economia/" not in href:
-                continue
-            if href in seen_urls:
-                continue
-
-            title = a.get_text(separator=" ", strip=True)
+        for item in items:
+            url = item.get("url", "").replace("http://", "https://")
+            title = html_module.unescape(item.get("title", ""))
             title = re.sub(r"\s+", " ", title).strip()
             title_key = title.lower()[:60]
-            if not title or len(title) < 15 or title_key in seen_titles:
+
+            if not url or "/noticias/Economia/" not in url:
+                continue
+            if url in seen_urls or title_key in seen_titles:
                 continue
 
-            seen_urls.add(href)
+            seen_urls.add(url)
             seen_titles.add(title_key)
             bonus.append({
                 "title":     title,
-                "url":       href,
+                "url":       url,
                 "category":  "Economía",
                 "summary":   "",
                 "is_dollar": False,
@@ -283,7 +277,7 @@ def get_most_viewed_bonus(exclude_urls: set) -> list:
                 break
 
     except Exception as e:
-        log(f"[WARN] Error obteniendo bonus Economía: {e}")
+        log(f"[WARN] Error obteniendo '+ Comentado en Economía': {e}")
 
     return bonus
 
