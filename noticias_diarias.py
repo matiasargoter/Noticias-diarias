@@ -129,12 +129,18 @@ def get_emol_dollar() -> dict:
         except Exception as e:
             log(f"[WARN] Error leyendo artículo del dólar: {e}")
 
-    # Fallback: mindicador.cl (Banco Central)
+    # Fallback: mindicador.cl (Banco Central) — verificar que sea de hoy
     if not value_str:
         try:
             r = requests.get("https://mindicador.cl/api/dolar", headers=HEADERS, timeout=10)
-            val = r.json()["serie"][0]["valor"]
+            serie = r.json()["serie"][0]
+            val = serie["valor"]
+            val_date = serie["fecha"][:10]   # "2026-06-19"
+            today_str = today.strftime("%Y-%m-%d")
             value_str = f"${val:,.2f}".replace(",", ".")
+            if val_date != today_str:
+                value_str += f" (cierre {val_date})"
+                log(f"[WARN] Dólar de mindicador.cl es de {val_date}, no de hoy ({today_str})")
         except Exception:
             value_str = "No disponible"
 
@@ -226,30 +232,31 @@ def get_emol_news() -> list:
 
 def get_most_viewed_bonus(exclude_urls: set) -> list:
     """
-    Scrapes la sección 'noticias más vistas' de Emol y retorna hasta 2
-    artículos de Economía (o Política si no hay suficientes de Economía).
+    Extrae los 2 primeros artículos de la sección '+ Comentando en Economía' de Emol.
+    No filtra por fecha: la sección puede incluir artículos de días anteriores.
     """
     bonus      = []
     seen_urls  = set(exclude_urls)
     seen_titles: set = set()
 
     try:
-        resp = requests.get("https://www.emol.com/", headers=HEADERS, timeout=15)
+        resp = requests.get("https://www.emol.com/economia/", headers=HEADERS, timeout=15)
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Buscar el contenedor de "más vistas" por texto del encabezado
+        # Localizar el encabezado "+ Comentando en Economía"
         section = None
-        for tag in soup.find_all(["h2", "h3", "h4", "div", "span"]):
+        for tag in soup.find_all(["h2", "h3", "h4", "div", "span", "p"]):
             txt = tag.get_text(strip=True).lower()
-            if "más vistas" in txt or "mas vistas" in txt or "más leídas" in txt:
-                # Subir al contenedor padre que tiene los links
-                section = tag.find_parent(["section", "div", "ul", "aside", "nav"])
+            if "comentando" in txt and "econom" in txt:
+                section = tag.find_parent(["section", "div", "ul", "aside", "nav", "article"])
                 if section:
                     break
 
-        links_source = section.find_all("a", href=True) if section else soup.find_all("a", href=True)
+        if not section:
+            log("[WARN] No se encontró la sección '+ Comentando en Economía' en Emol")
+            return bonus
 
-        for a in links_source:
+        for a in section.find_all("a", href=True):
             href: str = a["href"]
             if href.startswith("/"):
                 href = "https://www.emol.com" + href
@@ -279,7 +286,7 @@ def get_most_viewed_bonus(exclude_urls: set) -> list:
                 break
 
     except Exception as e:
-        log(f"[WARN] Error obteniendo más vistas: {e}")
+        log(f"[WARN] Error obteniendo '+ Comentando en Economía': {e}")
 
     return bonus
 
@@ -400,7 +407,7 @@ def build_html(dollar_item: dict, articles: list, bonus: list) -> str:
       <div class="card" style="background:{bg_c};border-left:4px solid {border};border-radius:12px;padding:24px;margin-bottom:12px">
         <div style="margin-bottom:12px">
           <span style="background:{bg_b};color:{tx_b};border-radius:20px;padding:5px 14px;font-size:12px;font-weight:800;letter-spacing:.5px;display:inline-block">🔥</span>
-          <span style="margin-left:10px;font-size:9px;letter-spacing:2px;font-weight:700;text-transform:uppercase;color:{cat_c}">{art["category"]} · Más Vista</span>
+          <span style="margin-left:10px;font-size:9px;letter-spacing:2px;font-weight:700;text-transform:uppercase;color:{cat_c}">{art["category"]} · + Comentando</span>
         </div>
         <h2 style="font-size:17px;font-weight:700;color:#1A1230;line-height:1.38;margin-bottom:10px">{art["title"]}</h2>
         {summary_b}
@@ -412,7 +419,7 @@ def build_html(dollar_item: dict, articles: list, bonus: list) -> str:
     bonus_section = f"""
   <div style="background:#FFF8F3;border-top:2px dashed #FDBA7466;padding:24px 32px 32px">
     <div style="font-size:9px;letter-spacing:4px;text-transform:uppercase;color:#FDBA74;margin-bottom:18px;padding-bottom:14px;border-bottom:1px dashed #FDBA7444;font-weight:700">
-      Bonus · Noticias más vistas en Economía
+      Bonus · + Comentando en Economía
     </div>
     {bonus_html}
   </div>""" if bonus_html else ""
