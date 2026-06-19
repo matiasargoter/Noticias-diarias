@@ -93,23 +93,28 @@ def get_emol_dollar() -> dict:
     dollar_article_url = None
     dollar_article_title = None
 
-    try:
-        resp = requests.get("https://www.emol.com/economia/", headers=HEADERS, timeout=15)
-        soup = BeautifulSoup(resp.text, "html.parser")
+    # La portada emol.com/ muestra los artículos del día (emol.com/economia/ bloquea conexiones)
+    for search_url in ["https://www.emol.com/", "https://www.emol.com/noticias/Economia/"]:
+        try:
+            resp = requests.get(search_url, headers=HEADERS, timeout=15)
+            soup = BeautifulSoup(resp.text, "html.parser")
 
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if href.startswith("/"):
-                href = "https://www.emol.com" + href
-            if date_path not in href:
-                continue
-            title = a.get_text(separator=" ", strip=True)
-            if any(kw in title.lower() for kw in dollar_keywords):
-                dollar_article_url = href
-                dollar_article_title = title
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if href.startswith("/"):
+                    href = "https://www.emol.com" + href
+                if date_path not in href or "/noticias/Economia/" not in href:
+                    continue
+                title = a.get_text(separator=" ", strip=True)
+                if any(kw in title.lower() for kw in dollar_keywords):
+                    dollar_article_url = href
+                    dollar_article_title = title
+                    break
+
+            if dollar_article_url:
                 break
-    except Exception as e:
-        log(f"[WARN] Error buscando artículo del dólar: {e}")
+        except Exception as e:
+            log(f"[WARN] Error buscando artículo del dólar en {search_url}: {e}")
 
     # Extraer valor y resumen del artículo
     value_str = None
