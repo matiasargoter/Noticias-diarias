@@ -178,10 +178,9 @@ def get_emol_news() -> list:
     seen_urls: set = set()
     seen_titles: set = set()
 
+    # Solo emol.com/ entrega HTML estático con artículos del día.
+    # emol.com/economia/ y emol.com/noticias/Economia/ son JS-rendered y bloquean conexiones.
     pages = [
-        "https://www.emol.com/economia/",
-        "https://www.emol.com/noticias/Economia/",
-        "https://www.emol.com/noticias/Nacional/",
         "https://www.emol.com/",
     ]
 
@@ -232,13 +231,18 @@ def get_emol_news() -> list:
         except Exception as e:
             log(f"[WARN] Error scrapeando {page_url}: {e}")
 
+    # Priorizar Economía sobre Política para el top 4
+    candidates.sort(key=lambda x: 0 if x["category"] == "Economía" else 1)
+
     return candidates
 
 
 def get_most_viewed_bonus(exclude_urls: set) -> list:
     """
-    Extrae los 2 primeros artículos de la sección '+ Comentando en Economía' de Emol.
-    No filtra por fecha: la sección puede incluir artículos de días anteriores.
+    Aproxima la sección '+ Comentando en Economía' usando el HTML estático de
+    emol.com/economia/ (carga JS-rendered los artículos destacados; el HTML
+    estático expone los artículos más recientes/relevantes en caché).
+    No filtra por fecha.
     """
     bonus      = []
     seen_urls  = set(exclude_urls)
@@ -248,23 +252,11 @@ def get_most_viewed_bonus(exclude_urls: set) -> list:
         resp = requests.get("https://www.emol.com/economia/", headers=HEADERS, timeout=15)
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Localizar el encabezado "+ Comentando en Economía"
-        section = None
-        for tag in soup.find_all(["h2", "h3", "h4", "div", "span", "p"]):
-            txt = tag.get_text(strip=True).lower()
-            if "comentando" in txt and "econom" in txt:
-                section = tag.find_parent(["section", "div", "ul", "aside", "nav", "article"])
-                if section:
-                    break
-
-        if not section:
-            log("[WARN] No se encontró la sección '+ Comentando en Economía' en Emol")
-            return bonus
-
-        for a in section.find_all("a", href=True):
+        for a in soup.find_all("a", href=True):
             href: str = a["href"]
-            if href.startswith("/"):
-                href = "https://www.emol.com" + href
+            if not href.startswith("/"):
+                continue
+            href = "https://www.emol.com" + href
 
             if "/noticias/Economia/" not in href:
                 continue
@@ -291,7 +283,7 @@ def get_most_viewed_bonus(exclude_urls: set) -> list:
                 break
 
     except Exception as e:
-        log(f"[WARN] Error obteniendo '+ Comentando en Economía': {e}")
+        log(f"[WARN] Error obteniendo bonus Economía: {e}")
 
     return bonus
 
