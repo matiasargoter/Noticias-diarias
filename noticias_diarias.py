@@ -204,9 +204,9 @@ def get_emol_dollar() -> dict:
         _, value_str = extract_dollar_value(body)
 
     if not value_str:
-        for attempt in range(1, 4):
+        for attempt in range(1, 3):
             try:
-                r = requests.get("https://mindicador.cl/api/dolar", headers=HEADERS, timeout=10)
+                r = requests.get("https://mindicador.cl/api/dolar", headers=HEADERS, timeout=12)
                 serie = r.json()["serie"][0]
                 val, val_date = serie["valor"], serie["fecha"][:10]
                 value_str = f"${val:,.2f}".replace(",", ".")
@@ -215,11 +215,21 @@ def get_emol_dollar() -> dict:
                     log(f"[WARN] Dólar mindicador.cl es de {val_date}, no de hoy")
                 break
             except Exception as e:
-                log(f"[WARN] mindicador.cl intento {attempt}/3: {e}")
-                if attempt < 3:
+                log(f"[WARN] mindicador.cl intento {attempt}/2: {e}")
+                if attempt < 2:
                     time.sleep(4)
-        if not value_str:
-            value_str = "No disponible"
+
+    if not value_str:   # último recurso: tipo de cambio USD→CLP (sin key)
+        try:
+            r = requests.get("https://open.er-api.com/v6/latest/USD", headers=HEADERS, timeout=12)
+            clp = r.json()["rates"]["CLP"]
+            value_str = f"${clp:,.2f}".replace(",", ".") + " (referencial)"
+            log("[WARN] Dólar desde open.er-api.com (referencial, no cierre Emol/BCCh)")
+        except Exception as e:
+            log(f"[WARN] open.er-api.com: {e}")
+
+    if not value_str:
+        value_str = "No disponible"
 
     return {
         "title":        art_title or f"Dólar cierra en {value_str}",
@@ -434,32 +444,43 @@ def _build_prompt(dollar_item: dict, candidates: list, bonus: list) -> str:
     return "\n".join(lines)
 
 
+GEMINI_MODELS = [m.strip() for m in os.environ.get(
+    "GEMINI_MODEL", "gemini-3.6-flash,gemini-flash-latest,gemini-2.0-flash").split(",") if m.strip()]
+
+
 def _call_gemini(system: str, user: str) -> str:
     """Llama a Gemini (REST, free tier). Devuelve el texto (JSON) o lanza excepción."""
-    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     payload = {
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": {
             "temperature": 0.35,
-            "maxOutputTokens": 12000,
+            "maxOutputTokens": 20000,
             "responseMimeType": "application/json",
-            "thinkingConfig": {"thinkingBudget": 0},
         },
     }
-    r = requests.post(url, headers={"x-goog-api-key": GEMINI_API_KEY,
-                                    "Content-Type": "application/json"},
-                      json=payload, timeout=90)
-    if r.status_code != 200:
-        raise RuntimeError(f"Gemini HTTP {r.status_code}: {r.text[:300]}")
-    data = r.json()
-    cand = (data.get("candidates") or [{}])[0]
-    parts = cand.get("content", {}).get("parts", [])
-    text = "".join(p.get("text", "") for p in parts)
-    if not text:
-        raise RuntimeError(f"Gemini sin texto (finishReason={cand.get('finishReason')})")
-    return text
+    last_err = "sin intentos"
+    for model in GEMINI_MODELS:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        try:
+            r = requests.post(url, headers={"x-goog-api-key": GEMINI_API_KEY,
+                                            "Content-Type": "application/json"},
+                              json=payload, timeout=120)
+        except Exception as e:
+            last_err = f"{model}: {e}"
+            continue
+        if r.status_code == 404:
+            last_err = f"{model}: 404 (modelo no disponible)"
+            continue
+        if r.status_code != 200:
+            raise RuntimeError(f"Gemini HTTP {r.status_code} ({model}): {r.text[:300]}")
+        cand = (r.json().get("candidates") or [{}])[0]
+        text = "".join(p.get("text", "") for p in cand.get("content", {}).get("parts", []))
+        if not text:
+            raise RuntimeError(f"Gemini sin texto ({model}, finishReason={cand.get('finishReason')})")
+        log(f"[INFO] Gemini modelo: {model}")
+        return text
+    raise RuntimeError(f"ningún modelo Gemini disponible ({last_err})")
 
 
 def _call_anthropic(system: str, user: str) -> str:
