@@ -4,129 +4,185 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <meta name="color-scheme" content="light">
-<meta name="supported-color-schemes" content="light">
-<title>Briefing Económico Chile — Martes, 01 de septiembre de 2026</title>
+<meta name="description" content="Briefing económico diario de Chile — análisis de las noticias de Emol Economía.">
+<link rel="canonical" href="https://matiasargoter.github.io/Noticias-diarias/noticias_2026-09-01.html">
+<title>Briefing Económico · Martes, 01 de septiembre de 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800;900&family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
-    background: #FAF6EF;
-    color: #33291E;
-    -webkit-font-smoothing: antialiased;
+  :root {
+    --paper:#FBF7EF; --paper-2:#F4ECDB; --ink:#241B10; --body:#403626;
+    --muted:#7C6F58; --rule:#DBCFB6; --accent:#B24A1B; --accent-2:#8C6A22;
+    --serif:'Newsreader',Georgia,'Times New Roman',serif;
+    --disp:'Playfair Display',Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   }
-  a { color: #BE5B2A; }
-  .wrap { max-width: 660px; margin: 0 auto; background: #FAF6EF; }
-  .hd { padding: 44px 30px 30px; border-bottom: 1px solid #E7DDCB; }
-  .brand { font-family: 'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace; font-size: 10px; letter-spacing: 4px; text-transform: uppercase; color: #BE5B2A; font-weight: 600; margin-bottom: 16px; }
-  .hd h1 { font-size: 30px; font-weight: 800; color: #33291E; letter-spacing: -1px; line-height: 1.1; margin-bottom: 12px; }
-  .hd .fecha { font-family: 'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace; font-size: 11.5px; letter-spacing: 1px; color: #9C8F7C; text-transform: uppercase; }
-  .rule { height: 1px; background-color: #E7DDCB; background: linear-gradient(90deg, #BE5B2A 0%, #B0752C 50%, transparent 100%); }
-  .body { padding: 26px 30px 20px; }
-  .section-lbl { font-family: 'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace; font-size: 9.5px; letter-spacing: 3px; text-transform: uppercase; color: #9C8F7C; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #E7DDCB; font-weight: 600; }
-  .ft { padding: 24px 30px 40px; border-top: 1px solid #E7DDCB; }
-  .ft p { font-family: 'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace; font-size: 9.5px; color: #9C8F7C; line-height: 1.9; letter-spacing: .5px; }
-  @media (max-width: 640px) {
-    .hd, .body, .ft, .wrap > div[style] { padding-left: 16px !important; padding-right: 16px !important; }
-    .card { padding: 18px !important; }
-    .hd h1 { font-size: 25px; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { overflow-x:hidden; max-width:100%; }
+  body { background:var(--paper); color:var(--body); font-family:var(--serif);
+    -webkit-font-smoothing:antialiased; line-height:1.65; }
+  .paper { width:100%; max-width:730px; margin:0 auto; padding:0 28px 72px;
+    background:var(--paper);
+    background-image:radial-gradient(circle at 1px 1px, rgba(140,106,34,.05) 1px, transparent 0);
+    background-size:22px 22px; }
+  a { color:var(--accent); }
+  .nameplate, .headline, .prose p, .editorial p, .dateline, .meta, .t-val { overflow-wrap:break-word; }
+
+  .masthead { text-align:center; padding:40px 0 26px; }
+  .mast-rule { border-top:3px double var(--ink); }
+  .nameplate { font-family:var(--disp); font-weight:900; color:var(--ink);
+    font-size:46px; letter-spacing:-1px; line-height:1.02; margin:20px 0 12px; }
+  .dateline { font-family:var(--sans); font-size:10.5px; letter-spacing:2.5px;
+    text-transform:uppercase; color:var(--muted); }
+  .dateline.sub { font-size:9.5px; letter-spacing:2px; margin-top:6px; padding-bottom:18px; }
+  .dateline b { color:var(--accent); font-weight:700; }
+
+  .editorial { background:var(--paper-2); border:1px solid var(--rule);
+    border-left:3px solid var(--accent); padding:22px 26px; margin:26px 0 8px; }
+  .ed-lbl { font-family:var(--sans); font-size:10px; letter-spacing:3px;
+    text-transform:uppercase; color:var(--accent); font-weight:700; margin-bottom:10px; }
+  .editorial p { font-family:var(--serif); font-size:18px; line-height:1.7;
+    color:var(--ink); font-style:italic; }
+
+  .story { padding:32px 0; border-top:1px solid var(--rule); }
+  .story.dollar { border-top:none; padding-top:22px; }
+  .kicker { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin-bottom:12px; }
+  .kicker .cat { font-family:var(--sans); font-size:11px; font-weight:700;
+    letter-spacing:2.5px; text-transform:uppercase; color:var(--accent); }
+  .rel { font-family:var(--sans); font-size:10px; font-weight:700; letter-spacing:.5px;
+    text-transform:uppercase; padding:2px 9px; border-radius:3px; }
+  .headline { font-family:var(--disp); color:var(--ink); font-weight:800;
+    font-size:27px; line-height:1.18; letter-spacing:-.3px; margin:2px 0 10px; }
+  .story.lead .headline { font-size:34px; }
+  .story.brief .headline { font-size:21px; font-weight:700; }
+  .meta { font-family:var(--sans); font-size:11.5px; letter-spacing:.4px;
+    color:var(--muted); text-transform:uppercase; margin-bottom:16px; }
+  .prose p { font-family:var(--serif); font-size:17.5px; line-height:1.75;
+    color:var(--body); margin-bottom:15px; }
+  .prose p.lead { font-size:19px; color:var(--ink); }
+  .story.lead .prose p.lead::first-letter { font-family:var(--disp); float:left;
+    font-size:64px; line-height:.82; font-weight:800; color:var(--accent);
+    padding:6px 10px 0 0; }
+  .ticker { display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;
+    background:var(--paper-2); border:1px solid var(--rule); padding:16px 20px;
+    margin:6px 0 18px; }
+  .t-lbl { font-family:var(--sans); font-size:10px; letter-spacing:2.5px;
+    text-transform:uppercase; color:var(--muted); font-weight:700; }
+  .t-val { font-family:var(--disp); font-size:38px; font-weight:800; color:var(--ink);
+    letter-spacing:-.5px; }
+  .src { display:inline-block; margin-top:6px; font-family:var(--sans); font-size:12.5px;
+    font-weight:600; color:var(--accent); text-decoration:none;
+    border-bottom:1px solid currentColor; padding-bottom:1px; }
+
+  .bonus { margin-top:14px; }
+  .sec-head { text-align:center; border-top:3px double var(--ink); padding-top:16px; margin-top:20px; }
+  .sec-head span { display:block; font-family:var(--disp); font-weight:800;
+    font-size:22px; color:var(--ink); }
+  .sec-head em { font-family:var(--sans); font-size:11px; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--muted); font-style:normal; }
+  .bonus .story { padding:24px 0; }
+
+  .colophon { margin-top:44px; border-top:1px solid var(--rule); padding-top:22px;
+    text-align:center; font-family:var(--sans); font-size:11px; line-height:1.9;
+    color:var(--muted); letter-spacing:.3px; }
+  .colophon a { color:var(--accent); word-break:break-all; }
+
+  @media (max-width:600px) {
+    .paper { padding:0 15px 56px; }
+    .nameplate { font-size:29px; letter-spacing:-.5px; }
+    .headline { font-size:22px; }
+    .story.lead .headline { font-size:25px; }
+    .editorial { padding:18px 16px; }
+    .editorial p { font-size:16px; }
+    .ticker { flex-direction:column; align-items:flex-start; gap:4px; padding:14px 16px; }
+    .t-val { font-size:27px; }
+    .story.lead .prose p.lead::first-letter { font-size:46px; }
+    .prose p { font-size:16.5px; }
+    .dateline { font-size:9px; letter-spacing:1.5px; }
   }
 </style>
 </head>
 <body>
-<div style="max-width:660px;margin:0 auto;padding:10px 30px;background:#F2EBDF;border-bottom:1px solid #E7DDCB;text-align:center"><a href="https://matiasargoter.github.io/Noticias-diarias/noticias_2026-09-01.html" style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;letter-spacing:1.5px;color:#BE5B2A;text-decoration:none;text-transform:uppercase;font-weight:600">Ver esta edición en el navegador →</a></div>
-<div class="wrap">
+<div class="paper">
 
-  <div class="hd">
-    <div class="brand">&#9670; Noticias Diarias &nbsp;·&nbsp; Emol Economía</div>
-    <h1>Briefing Económico<br>&amp; Mercados</h1>
-    <div class="fecha">Martes, 01 de septiembre de 2026</div>
-  </div>
+  <header class="masthead">
+    <div class="mast-rule"></div>
+    <div class="nameplate">Briefing Económico</div>
+    <div class="dateline">Santiago de Chile &nbsp;·&nbsp; Martes, 01 de septiembre de 2026</div>
+    <div class="dateline sub">Edición de las 17:20 &nbsp;·&nbsp; Fuente: <b>Emol Economía</b> &nbsp;·&nbsp; Análisis con IA</div>
+    <div class="mast-rule"></div>
+  </header>
 
-  <div class="rule"></div>
-
-  <div class="body">
-    
-    <div style="background:#F2EBDF;border:1px solid #E7DDCB;border-left:2px solid #BE5B2A;border-radius:14px;padding:20px 22px;margin-bottom:20px">
-      <div style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:2.5px;text-transform:uppercase;color:#BE5B2A;font-weight:600;margin-bottom:9px">&#9613; Lectura del día</div>
-      <p style="margin:0;font-size:14px;line-height:1.75;color:#33291E">La economía chilena enfrentó una jornada marcada por un severo deterioro en sus indicadores de actividad, tras registrarse una caída del 1,5% en el Imacec de julio, lo que obligará al Ministerio de Hacienda a recortar sus proyecciones de crecimiento. A este escenario se suma un marcado desplome en la confianza de los consumidores, posicionando al país entre los peores evaluados a nivel regional y global. En materia regulatoria, el Ejecutivo ordenó el bloqueo masivo de portales de apuestas online mientras el dólar cerró en $933,40.</p>
-    </div>
-    <div class="section-lbl">Las noticias que mueven el mercado</div>
-    <div style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;margin:-4px 0 20px;font-size:9.5px;color:#9C8F7C;line-height:1.7;letter-spacing:.5px">RELEVANCIA &nbsp; <span style="color:#9E3418">◆ CRÍTICA</span> &nbsp;<span style="color:#8F5A15">◆ ALTA</span> &nbsp;<span style="color:#5A6338">◆ MEDIA</span> &nbsp;<span style="color:#7C7060">◆ BAJA</span></div>
-    
-      <div class="card" style="background:#FFFDF8;border:1px solid #E7DDCB;border-radius:14px;padding:24px;margin-bottom:16px">
-        <div style="display:flex;align-items:baseline"><span style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:22px;font-weight:700;color:#BE5B2A;letter-spacing:1px">01</span><span style="margin-left:12px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:2.5px;font-weight:600;text-transform:uppercase;color:#9C8F7C">Mercado Cambiario</span></div>
-        <div style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:44px;font-weight:700;color:#33291E;letter-spacing:-1px;line-height:1.1;margin:18px 0 10px">$933.40</div>
-        <h2 style="font-size:15px;font-weight:600;color:#6E6252;line-height:1.4;margin:0 0 4px">Dólar cierra en $933,40 tras conocerse contracción económica de julio</h2>
-        <div style="margin-top:14px"><span style="display:inline-block;background:#E4E7D6;color:#5A6338;border-radius:6px;padding:3px 9px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin:0 6px 6px 0">◆ Media</span><span style="display:inline-block;background:#EDE4D2;color:#7A6B52;border-radius:6px;padding:3px 9px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin:0 6px 6px 0">Corto plazo</span></div>
-        <div style="margin-top:14px"><p style="margin:0 0 11px;font-size:13.5px;color:#6E6252;line-height:1.72">El tipo de cambio en Chile finalizó la jornada ubicándose en los $933,40, reflejando el comportamiento del mercado cambiario local tras la divulgación de los recientes datos sobre la actividad económica nacional.</p><p style="margin:0 0 11px;font-size:13.5px;color:#6E6252;line-height:1.72">Desde la perspectiva del análisis de mercado, la cotización de la divisa estadounidense a estos niveles encarece las importaciones de bienes e insumos clave para la economía local, agregando presión sobre los costos internos. En el plano político y macroeconómico, la evolución de la divisa restringe el margen para el alivio de la política monetaria y mantiene la atención sobre el desempeño de la economía interna frente al contexto exterior.</p></div>
-        <div style="margin-top:16px;padding-top:13px;border-top:1px solid #E7DDCB"><a href="https://www.emol.com/economia/" style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10.5px;color:#9C8F7C;text-decoration:none;word-break:break-all">→ www.emol.com/economia/</a></div>
-      </div>
-      <div class="card" style="background:#FFFDF8;border:1px solid #E7DDCB;border-radius:14px;padding:24px;margin-bottom:16px">
-        <div style="display:flex;align-items:baseline"><span style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:22px;font-weight:700;color:#B0752C;letter-spacing:1px">02</span><span style="margin-left:12px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:2.5px;font-weight:600;text-transform:uppercase;color:#9C8F7C">Economía</span></div>
-        
-        <h2 style="font-size:19px;font-weight:700;color:#33291E;line-height:1.35;letter-spacing:-.3px;margin:16px 0 4px">Imacec se hunde 1,5% en julio y sufre su peor registro en más de tres años</h2>
-        <div style="margin-top:14px"><span style="display:inline-block;background:#F6DAD0;color:#9E3418;border-radius:6px;padding:3px 9px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin:0 6px 6px 0">◆ Crítica</span><span style="display:inline-block;background:#EDE4D2;color:#7A6B52;border-radius:6px;padding:3px 9px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin:0 6px 6px 0">Corto plazo</span></div>
-        <div style="margin-top:14px"><p style="margin:0 0 11px;font-size:13.5px;color:#6E6252;line-height:1.72">La economía chilena sufrió una contracción del 1,5% durante el mes de julio, marcando su caída más pronunciada en más de tres años y retornando a terreno negativo. El resultado del Indicador Mensual de Actividad Económica (Imacec) se situó en la parte más pesimista de las proyecciones y expectativas que manejaba el mercado.</p><p style="margin:0 0 11px;font-size:13.5px;color:#6E6252;line-height:1.72">Este severo deterioro de la actividad económica evidencia la fragilidad de la recuperación interna, afectando de manera directa las decisiones de inversión privada y la generación de empleo formal en el país. En el plano político, el mal dato económico incrementa la presión sobre el Gobierno y el equipo económico para revisar las políticas de estímulo, al tiempo que tensa las negociaciones parlamentarias sobre el presupuesto y el crecimiento económico de corto y mediano plazo.</p></div>
-        <div style="margin-top:16px;padding-top:13px;border-top:1px solid #E7DDCB"><a href="https://www.emol.com/noticias/Economia/2026/09/01/1210149/imacec-banco-central.html" style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10.5px;color:#9C8F7C;text-decoration:none;word-break:break-all">→ www.emol.com/noticias/Economia/2026/09/01/1210149/imacec-banco-central.html</a></div>
-      </div>
-      <div class="card" style="background:#FFFDF8;border:1px solid #E7DDCB;border-radius:14px;padding:24px;margin-bottom:16px">
-        <div style="display:flex;align-items:baseline"><span style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:22px;font-weight:700;color:#7A8B4F;letter-spacing:1px">03</span><span style="margin-left:12px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:2.5px;font-weight:600;text-transform:uppercase;color:#9C8F7C">Economía</span></div>
-        
-        <h2 style="font-size:19px;font-weight:700;color:#33291E;line-height:1.35;letter-spacing:-.3px;margin:16px 0 4px">Hacienda reajustará a la baja su estimación de crecimiento económico</h2>
-        <div style="margin-top:14px"><span style="display:inline-block;background:#F5E3C6;color:#8F5A15;border-radius:6px;padding:3px 9px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin:0 6px 6px 0">◆ Alta</span><span style="display:inline-block;background:#EDE4D2;color:#7A6B52;border-radius:6px;padding:3px 9px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin:0 6px 6px 0">Mediano plazo</span></div>
-        <div style="margin-top:14px"><p style="margin:0 0 11px;font-size:13.5px;color:#6E6252;line-height:1.72">El Ministerio de Hacienda confirmó que modificará sus proyecciones de expansión económica para el presente año a raíz de la severa contracción del 1,5% registrada por el Imacec en julio. La cartera estatal mantenía previamente una previsión de crecimiento del 1,8% del PIB hacia 2026, meta que según señaló Quiroz requerirá un ajuste obligatorio.</p><p style="margin:0 0 11px;font-size:13.5px;color:#6E6252;line-height:1.72">La revisión a la baja por parte del Gobierno rebaja los ingresos fiscales esperados y acorta el espacio para el gasto público en los próximos periodos. Desde el punto de vista político, esta sinceración de las expectativas macroeconómicas reconfigura el debate legislativo en el Congreso, donde la oposición presionará por un reordenamiento del gasto y mayores incentivos para la productividad privada.</p></div>
-        <div style="margin-top:16px;padding-top:13px;border-top:1px solid #E7DDCB"><a href="https://www.emol.com/noticias/Economia/2026/09/01/1210197/haicenda-proyeccion-crecimiento.html" style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10.5px;color:#9C8F7C;text-decoration:none;word-break:break-all">→ www.emol.com/noticias/Economia/2026/09/01/1210197/haicenda-proyeccion-crecimi…</a></div>
-      </div>
-      <div class="card" style="background:#FFFDF8;border:1px solid #E7DDCB;border-radius:14px;padding:24px;margin-bottom:16px">
-        <div style="display:flex;align-items:baseline"><span style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:22px;font-weight:700;color:#B0607A;letter-spacing:1px">04</span><span style="margin-left:12px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:2.5px;font-weight:600;text-transform:uppercase;color:#9C8F7C">Economía</span></div>
-        
-        <h2 style="font-size:19px;font-weight:700;color:#33291E;line-height:1.35;letter-spacing:-.3px;margin:16px 0 4px">Confianza del consumidor cae y ubica a Chile entre los peores de la región</h2>
-        <div style="margin-top:14px"><span style="display:inline-block;background:#F5E3C6;color:#8F5A15;border-radius:6px;padding:3px 9px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin:0 6px 6px 0">◆ Alta</span><span style="display:inline-block;background:#EDE4D2;color:#7A6B52;border-radius:6px;padding:3px 9px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin:0 6px 6px 0">Mediano plazo</span></div>
-        <div style="margin-top:14px"><p style="margin:0 0 11px;font-size:13.5px;color:#6E6252;line-height:1.72">La confianza del consumidor en Chile profundizó su trayectoria descendente, situando al país en la peor posición de Latinoamérica y en el penúltimo lugar a nivel mundial entre las economías estudiadas. La caída se fundamenta en un continuo deterioro de las expectativas económicas de las familias, el debilitamiento del empleo y la paralización de inversiones.</p><p style="margin:0 0 11px;font-size:13.5px;color:#6E6252;line-height:1.72">Este pesimismo de los consumidores anticipa un menor dinamismo en el consumo de los hogares, factor central para la reactivación del comercio y de los servicios. En el ámbito político, el marcado deterioro de la percepción ciudadana complica la aprobación de proyectos gubernamentales que requieran consenso amplio y eleva las exigencias sobre la gestión del Ejecutivo frente a las necesidades económicas inmediatas.</p></div>
-        <div style="margin-top:16px;padding-top:13px;border-top:1px solid #E7DDCB"><a href="https://www.emol.com/noticias/Economia/2026/09/01/1210218/confianza-consumidor-chile-caida-indice.html" style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10.5px;color:#9C8F7C;text-decoration:none;word-break:break-all">→ www.emol.com/noticias/Economia/2026/09/01/1210218/confianza-consumidor-chile-…</a></div>
-      </div>
-      <div class="card" style="background:#FFFDF8;border:1px solid #E7DDCB;border-radius:14px;padding:24px;margin-bottom:16px">
-        <div style="display:flex;align-items:baseline"><span style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:22px;font-weight:700;color:#A07C46;letter-spacing:1px">05</span><span style="margin-left:12px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:2.5px;font-weight:600;text-transform:uppercase;color:#9C8F7C">Economía</span></div>
-        
-        <h2 style="font-size:19px;font-weight:700;color:#33291E;line-height:1.35;letter-spacing:-.3px;margin:16px 0 4px">Gobierno ordena a empresas de internet bloquear 42 sitios de apuestas online</h2>
-        <div style="margin-top:14px"><span style="display:inline-block;background:#E4E7D6;color:#5A6338;border-radius:6px;padding:3px 9px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin:0 6px 6px 0">◆ Media</span><span style="display:inline-block;background:#EDE4D2;color:#7A6B52;border-radius:6px;padding:3px 9px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin:0 6px 6px 0">Corto plazo</span></div>
-        <div style="margin-top:14px"><p style="margin:0 0 11px;font-size:13.5px;color:#6E6252;line-height:1.72">La Subsecretaría de Telecomunicaciones (Subtel) instruyó a las empresas proveedoras de servicios de internet el bloqueo de 42 plataformas de apuestas online en un plazo máximo de 48 horas. La orden abarca a sitios reconocidos de la industria como Betano, Coolbet, Betsson, Stake y Bet365, entre otras operadoras.</p><p style="margin:0 0 11px;font-size:13.5px;color:#6E6252;line-height:1.72">Esta medida regulatoria afecta la operación directa de plataformas no domiciliadas en Chile y sus acuerdos de patrocinio en el ámbito del entretenimiento y el deporte. Políticamente, la acción del Ejecutivo intensifica la urgencia en la discusión parlamentaria para aprobar el marco regulatorio que fija condiciones operativas e impuestos definitivos para esta actividad.</p></div>
-        <div style="margin-top:16px;padding-top:13px;border-top:1px solid #E7DDCB"><a href="https://www.emol.com/noticias/Economia/2026/09/01/1210160/subtel-empresas-bloquear-apuestas-online.html" style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10.5px;color:#9C8F7C;text-decoration:none;word-break:break-all">→ www.emol.com/noticias/Economia/2026/09/01/1210160/subtel-empresas-bloquear-ap…</a></div>
-      </div>
-  </div>
+  <section class="editorial"><div class="ed-lbl">La lectura del día</div><p>La economía chilena enfrenta un escenario de alta preocupación tras registrar una contracción del Imacec de 1,5% en julio y una caída de 5,1% en la producción industrial, obligando al Ministerio de Hacienda a anunciar un reajuste a la baja en sus proyecciones de crecimiento. El deterioro del escenario macroeconómico se refleja también en la confianza del consumidor, donde Chile se ubica en el último lugar de Latinoamérica. En paralelo, el Gobierno busca obtener ingresos por más de US$73 millones mediante la venta de activos fiscales, mientras el tipo de cambio cerró en $933,40 y el sistema previsional se alista para el fin de los multifondos.</p></section>
 
   
-  <div style="padding:8px 30px 34px">
-    <div style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:3px;text-transform:uppercase;color:#9C8F7C;margin:0 0 16px;padding-top:22px;border-top:1px solid #E7DDCB;font-weight:600">
-      Bonus · lo más comentado
-    </div>
-    
-      <div class="card" style="background:#FFFDF8;border:1px solid #E7DDCB;border-left:2px solid #BE5B2A;border-radius:12px;padding:20px 22px;margin-bottom:12px">
-        <div style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:2.5px;font-weight:600;text-transform:uppercase;color:#BE5B2A">
-          &#128293; + Comentado en Economía
-        </div>
-        <h3 style="font-size:16px;font-weight:700;color:#33291E;line-height:1.35;margin:14px 0 0">Superintendencia de Pensiones define regulación clave para fondos generacionales</h3>
-        <div style="margin-top:11px"><span style="display:inline-block;background:#F5E3C6;color:#8F5A15;border-radius:6px;padding:3px 9px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin:0 6px 6px 0">◆ Alta</span></div>
-        <div style="margin-top:12px"><p style="margin:0 0 11px;font-size:12.5px;color:#6E6252;line-height:1.72">La Superintendencia de Pensiones se alista para publicar la versión definitiva del régimen de inversión que implementará los nuevos fondos generacionales, marcando el fin del sistema de multifondos tradicional. La resolución mantiene atentas a las Administradoras de Fondos de Pensiones (AFP), debido a los múltiples parámetros de inversión y plazos técnicos en juego.</p><p style="margin:0 0 11px;font-size:12.5px;color:#6E6252;line-height:1.72">La entrada de este régimen reconfigurará la liquidez y las decisiones de asignación de activos en el mercado financiero chileno. Políticamente, este hito regulatorio pone a prueba la capacidad de adaptación de las administradoras ante las exigencias de la autoridad y reabre el debate previsional sobre el manejo del ahorro de los trabajadores.</p></div>
-        <div style="margin-top:16px;padding-top:13px;border-top:1px solid #E7DDCB"><a href="https://www.emol.com/noticias/Economia/2026/08/31/1209872/regimen-de-inversion-pensiones.html" style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10.5px;color:#9C8F7C;text-decoration:none;word-break:break-all">→ www.emol.com/noticias/Economia/2026/08/31/1209872/regimen-de-inversion-pensio…</a></div>
-      </div>
-      <div class="card" style="background:#FFFDF8;border:1px solid #E7DDCB;border-left:2px solid #BE5B2A;border-radius:12px;padding:20px 22px;margin-bottom:12px">
-        <div style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:9.5px;letter-spacing:2.5px;font-weight:600;text-transform:uppercase;color:#BE5B2A">
-          &#128293; + Comentado en Economía
-        </div>
-        <h3 style="font-size:16px;font-weight:700;color:#33291E;line-height:1.35;margin:14px 0 0">Producción industrial se hunde 5,1% en julio y anticipa contracción</h3>
-        <div style="margin-top:11px"><span style="display:inline-block;background:#F5E3C6;color:#8F5A15;border-radius:6px;padding:3px 9px;font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;margin:0 6px 6px 0">◆ Alta</span></div>
-        <div style="margin-top:12px"><p style="margin:0 0 11px;font-size:12.5px;color:#6E6252;line-height:1.72">La actividad industrial en Chile retomó la senda negativa en julio al registrar una caída del 5,1%, al tiempo que el sector comercio anotó su primera contracción desde marzo de 2024. Ambos indicadores dieron una señal previa al desempeño negativo que exhibió el Imacec del mismo mes.</p><p style="margin:0 0 11px;font-size:12.5px;color:#6E6252;line-height:1.72">El desplome en la industria manufacturera y el comercio impacta directamente en las contrataciones y la inversión del sector privado. Políticamente, el deterioro del aparato productivo reaviva las críticas gremiales sobre la permisología y exige respuestas estatales para incentivar la competitividad industrial.</p></div>
-        <div style="margin-top:16px;padding-top:13px;border-top:1px solid #E7DDCB"><a href="https://www.emol.com/noticias/Economia/2026/08/31/1210039/cifras-sectoriales-previo-imacec.html" style="font-family:'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace;font-size:10.5px;color:#9C8F7C;text-decoration:none;word-break:break-all">→ www.emol.com/noticias/Economia/2026/08/31/1210039/cifras-sectoriales-previo-i…</a></div>
-      </div>
-  </div>
+    <article class="story dollar">
+      <div class="kicker"><span class="cat">MERCADO CAMBIARIO</span><span class="rel" style="background:#E3E6D3;color:#55603A">Media</span></div>
+      <div class="ticker"><div class="t-lbl">Dólar observado · cierre</div><div class="t-val">$933.40</div></div>
+      <h2 class="headline">Dólar cierra en $933,40 en el mercado local</h2>
+      <div class="meta">Análisis &nbsp;·&nbsp; Horizonte: Corto plazo</div>
+      <div class="prose"><p class="lead">El tipo de cambio completó sus operaciones de la jornada en el mercado spot chileno cotizándose en $933,40 por dólar. La divisa estadounidense mantuvo este nivel de cierre en medio de un contexto de alta sensibilidad por los datos macroeconómicos locales.</p><p class="">Desde una lectura analítica, una cotización del dólar en estos niveles contribuye a contener pressions inflacionarias importadas, aunque acota la competitividad de sectores exportadores. En lo político y gubernamental, la estabilidad relativa de la divisa brinda cierto margen al Banco Central y al Ministerio de Hacienda para enfocar sus esfuerzos en la desaceleración de la actividad interna sin la presión inmediata de intervenir en el mercado cambiario.</p></div>
+      <a class="src" href="https://www.emol.com/economia/" target="_blank" rel="noopener">Leer la nota original en Emol&nbsp;→</a>
+    </article>
+    <article class="story lead">
+      <div class="kicker"><span class="cat">ECONOMÍA</span><span class="rel" style="background:#F2D9CE;color:#8F3213">Crítica</span></div>
+      
+      <h2 class="headline">Imacec cae 1,5% en julio y registra su mayor contracción en tres años</h2>
+      <div class="meta">Análisis &nbsp;·&nbsp; Horizonte: Corto plazo</div>
+      <div class="prose"><p class="lead">La economía chilena sufrió un severo retroceso en julio al registrar una caída interanual del 1,5% en el Indicador Mensual de Actividad Económica (Imacec). Este resultado representó la mayor baja de la actividad nacional en más de tres años, ubicándose en la zona más pesimista de las estimaciones que mantenía el mercado financiero.</p><p class="">El indicador confirma el retorno de la economía a cifras negativas, interrumpiendo el desempeño previo y reflejando una contracción más profunda de lo previsto en el inicio del segundo semestre.</p><p class="">Para el escenario macroeconómico de Chile, esta cifra presiona a la baja las expectativas de crecimiento del PIB anual y proyecta una menor dinamización en el mercado laboral y la inversión. Desde la perspectiva política, la contracción de 1,5% debilita el discurso oficial sobre la recuperación económica y genera un terreno complejo para el Gobierno en las negociaciones fiscales y presupuestarias frente al Congreso.</p></div>
+      <a class="src" href="https://www.emol.com/noticias/Economia/2026/09/01/1210149/imacec-banco-central.html" target="_blank" rel="noopener">Leer la nota original en Emol&nbsp;→</a>
+    </article>
+    <article class="story story">
+      <div class="kicker"><span class="cat">ECONOMÍA</span><span class="rel" style="background:#F3E4C4;color:#875312">Alta</span></div>
+      
+      <h2 class="headline">Hacienda reajustará la proyección de crecimiento económico para este año</h2>
+      <div class="meta">Análisis &nbsp;·&nbsp; Horizonte: Mediano plazo</div>
+      <div class="prose"><p class="">El Ministerio de Hacienda confirmó que ajustará la proyección de crecimiento del Producto Interno Bruto (PIB) tras el negativo desempeño del Imacec en julio. La cartera estatal mantenía previamente una estimación de expansión del 1,8% del PIB para 2026, meta que el economista Quiroz calificó como necesario reajustar ante el nuevo escenario.</p><p class="">La decisión gubernamental responde al impacto directo de la contracción de 1,5% en la actividad, reconociendo oficialmente que el marco macroeconómico contemplado no se alineará con los datos recientes.</p><p class="">En lo económico, la reducción de la expectativa oficial de crecimiento afectará las proyecciones de ingresos fiscales y recortará los márgenes del gasto público de mediano plazo. En el ámbito político, el ajuste sitúa al Gobierno a la defensiva frente a las críticas de la oposición por la gestión del crecimiento y reabre la discusión sobre las metas macroeconómicas del Ejecutivo.</p></div>
+      <a class="src" href="https://www.emol.com/noticias/Economia/2026/09/01/1210197/haicenda-proyeccion-crecimiento.html" target="_blank" rel="noopener">Leer la nota original en Emol&nbsp;→</a>
+    </article>
+    <article class="story story">
+      <div class="kicker"><span class="cat">ECONOMÍA</span><span class="rel" style="background:#F3E4C4;color:#875312">Alta</span></div>
+      
+      <h2 class="headline">Confianza del consumidor en Chile cae al nivel más bajo de Latinoamérica</h2>
+      <div class="meta">Análisis &nbsp;·&nbsp; Horizonte: Mediano plazo</div>
+      <div class="prose"><p class="">Chile registró un nuevo deterioro en sus niveles de confianza del consumidor, ubicándose como el país con el peor indicador de Latinoamérica y descendiendo al penúltimo lugar global entre las economías analizadas. El reporte muestra un claro pesimismo en la apreciación de los hogares.</p><p class="">El debilitamiento del indicador responde a la caída sistemática en las expectativas sobre el desempeño general de la economía, el estancamiento percibido en la creación de empleo y las bajas perspectivas de inversión.</p><p class="">Esta caída en el ánimo de los consumidores anticipa una menor propensión al gasto de las familias y una contracción prolongada en el consumo privado, impactando negativamente al comercio y a la recaudación por IVA. En lo político, un clima prolongado de pesimismo de la ciudadanía incrementa la desaprobación hacia la conducción económica del Ejecutivo y dificulta el consenso para reformas clave.</p></div>
+      <a class="src" href="https://www.emol.com/noticias/Economia/2026/09/01/1210218/confianza-consumidor-chile-caida-indice.html" target="_blank" rel="noopener">Leer la nota original en Emol&nbsp;→</a>
+    </article>
+    <article class="story story">
+      <div class="kicker"><span class="cat">ECONOMÍA</span><span class="rel" style="background:#E3E6D3;color:#55603A">Media</span></div>
+      
+      <h2 class="headline">Gobierno relicitará 234 inmuebles fiscales para recaudar US$73 millones</h2>
+      <div class="meta">Análisis &nbsp;·&nbsp; Horizonte: Corto plazo</div>
+      <div class="prose"><p class="">El Gobierno lanzó el plan "Se Busca Dueño", mediante el cual pondrá a la venta 234 propiedades fiscales a lo largo del año. Con este proceso de enajenación, el Fisco prevé recaudar más de US$73 millones.</p><p class="">La iniciativa considera la licitación directa de 159 bienes raíces, además de 75 inmuebles cuyos trámites de venta ya están en desarrollo, destacando un paño de alto valor comercial ubicado en la comuna de Vitacura que lidera los montos proyectados.</p><p class="">Económicamente, la medida proveerá liquidez directa a las arcas públicas en un contexto de ingresos ajustados y permitirá dinamizar proyectos de inversión privada sobre terrenos fiscales subutilizados. En el plano político, el plan muestra una búsqueda de eficiencia patrimonial por parte del Ejecutivo para generar recursos fiscales sin recurrir a mayor endeudamiento.</p></div>
+      <a class="src" href="https://www.emol.com/noticias/Economia/2026/09/01/1210172/bienes-nacionales-venta-inmuebles-fiscales.html" target="_blank" rel="noopener">Leer la nota original en Emol&nbsp;→</a>
+    </article>
 
-  <div class="ft">
-    <p>Fuente &nbsp; emol.com — Economía y "+ Comentado en Economía"<br>
-    Selección y análisis editorial generados automáticamente · Martes, 01 de septiembre de 2026<br>
-    <a href="https://matiasargoter.github.io/Noticias-diarias/noticias_2026-09-01.html">https://matiasargoter.github.io/Noticias-diarias/noticias_2026-09-01.html</a><br>
-    Este correo también trae el briefing adjunto como archivo .html.</p>
-  </div>
+  <section class="bonus"><div class="sec-head"><span>Lo más comentado</span><em>La conversación de los lectores en Emol Economía</em></div>
+    <article class="story brief">
+      <div class="kicker"><span class="cat">ECONOMÍA</span><span class="rel" style="background:#F3E4C4;color:#875312">Alta</span></div>
+      
+      <h2 class="headline">Superintendencia alista definición por fin de multifondos</h2>
+      <div class="meta">Análisis</div>
+      <div class="prose"><p class="">La Superintendencia de Pensiones publicará la versión definitiva del régimen de inversión para los fondos generacionales, marcando la eliminación progresiva del esquema de multifondos. La definición mantiene a las AFP atentas a las pautas operativas del regulador.</p><p class="">Este cambio estructural redefinirá la asignación de activos en el mercado de capitales local según la edad de los afiliados. Políticamente, la implementación del régimen generacional materializa un hito normativo pendiente en la regulación del sistema previsional.</p></div>
+      <a class="src" href="https://www.emol.com/noticias/Economia/2026/08/31/1209872/regimen-de-inversion-pensiones.html" target="_blank" rel="noopener">Leer la nota original en Emol&nbsp;→</a>
+    </article>
+    <article class="story brief">
+      <div class="kicker"><span class="cat">ECONOMÍA</span><span class="rel" style="background:#F3E4C4;color:#875312">Alta</span></div>
+      
+      <h2 class="headline">Producción industrial se hunde 5,1% y presiona a la economía</h2>
+      <div class="meta">Análisis</div>
+      <div class="prose"><p class="">La producción industrial volvió a terreno negativo en julio con un marcado descenso de 5,1%. En simultáneo, el sector comercio anotó su primera caída interanual desde marzo de 2024.</p><p class="">Estos datos sectoriales dieron la señal anticipada del estancamiento en la actividad agregada, afectando las proyecciones de empleo industrial. Políticamente, la caída acentúa los reclamos gremiales por medidas de reactivación y menores trabas a la productividad.</p></div>
+      <a class="src" href="https://www.emol.com/noticias/Economia/2026/08/31/1210039/cifras-sectoriales-previo-imacec.html" target="_blank" rel="noopener">Leer la nota original en Emol&nbsp;→</a>
+    </article></section>
+
+  <footer class="colophon">
+    Briefing Económico es un resumen automatizado de la sección Economía de Emol y de
+    "+ Comentado en Economía". Selección y análisis generados con IA a partir de esos
+    artículos; no constituye asesoría financiera.<br>
+    Edición del Martes, 01 de septiembre de 2026.
+    <br><a href="https://matiasargoter.github.io/Noticias-diarias/noticias_2026-09-01.html">https://matiasargoter.github.io/Noticias-diarias/noticias_2026-09-01.html</a>
+  </footer>
 
 </div>
 </body>
