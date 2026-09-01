@@ -7,12 +7,13 @@ Flujo:
   1. Dólar de cierre (Emol portada, fallback mindicador.cl)   → item #1 ("Top 5")
   2. Candidatos de la sección Economía de Emol del día (Nacional solo como respaldo)
   3. Bonus: "+ Comentado en Economía" (API interna de comentarios de Emol)
-  4. Análisis IA (Claude API) — selecciona y ordena las 4 noticias de Economía que
-     más mueven el mercado y genera, por noticia, el bloque editorial del CLAUDE.md
-     (Impacto Chile/Global, dimensión política si aplica, Impacto Financiero,
-     Relevancia, Horizonte) + una "Lectura del día". Sin ANTHROPIC_API_KEY → modo básico.
-  5. HTML (diseño dark minimalista) → se envía por Gmail SMTP como cuerpo del correo
-     Y como archivo .html adjunto, para abrirlo en el navegador. No hay sitio público.
+  4. Análisis IA (Google Gemini, free tier; Anthropic opcional) — selecciona y ordena
+     las 4 noticias de Economía más relevantes y redacta, por noticia, un resumen de
+     2-3 párrafos estilo periodista experto que integra la lectura económica y política
+     para Chile, más "Lectura del día". Sin GEMINI_API_KEY/ANTHROPIC_API_KEY → modo básico.
+  5. HTML (diseño cálido y claro) → se envía por Gmail SMTP como cuerpo del correo y
+     como archivo .html adjunto, y se publica en GitHub Pages (PUBLIC_BASE_URL) con
+     link "Ver en el navegador".
 """
 
 import os
@@ -44,9 +45,12 @@ GMAIL_USER         = os.environ.get("GMAIL_USER",         "matiasargoter@gmail.c
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 RECIPIENT_EMAIL    = os.environ.get("RECIPIENT_EMAIL",    "matiasargoter@gmail.com")
 OUTPUT_DIR         = os.environ.get("OUTPUT_DIR",         "/Users/matiasargote/Desktop/Noticias diarias")
+GEMINI_API_KEY     = os.environ.get("GEMINI_API_KEY",     "")
 ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY",  "")
 AI_MODEL           = os.environ.get("AI_MODEL",           "claude-opus-5")
 DRY_RUN            = os.environ.get("DRY_RUN", "") not in ("", "0", "false", "False")
+# URL pública del briefing publicado (GitHub Pages). Vacío = sin link.
+PUBLIC_BASE_URL    = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 # ─────────────────────────────────────────────────────────
 
 HEADERS = {
@@ -329,88 +333,64 @@ def get_most_viewed_bonus(exclude_urls: set) -> list:
 
 
 # ─────────────────────────────────────────────────────────
-# ANÁLISIS IA — Claude API
+# ANÁLISIS IA — Google Gemini (free tier) / Anthropic (opcional)
 # ─────────────────────────────────────────────────────────
 
-SYSTEM_ANALISTA = """Eres un editor económico y analista de mercados senior para un briefing diario en Chile.
+SYSTEM_ANALISTA = """Eres un periodista económico y analista de mercados senior. Redactas un briefing diario para Chile.
 
 Reglas de fuente (estrictas):
-- Trabajas EXCLUSIVAMENTE con el contenido de los artículos de Emol Economía que te entrego en el mensaje.
+- Trabajas EXCLUSIVAMENTE con el contenido de los artículos de Emol que te entrego en el mensaje.
 - No incorpores cifras, hechos, cotizaciones ni declaraciones que no estén en ese texto.
-- El análisis de impacto es tu razonamiento editorial sobre ese contenido, no un dato: si el artículo no da base para evaluar un canal (dólar, tasas, cobre, bolsa, inversión), escribe "Sin efecto directo previsible".
+- Tu lectura de impacto es razonamiento editorial sobre ese contenido, no un dato inventado.
 
 Criterio editorial:
 - Todas las noticias del cuerpo salen de la sección Economía de Emol. Si un candidato viene
-  de otra sección (Nacional), inclúyelo SOLO si tiene impacto económico o de mercado directo.
-- Prioriza noticias con consecuencias económicas y de mercado reales por sobre las meramente declarativas.
+  de la sección Nacional, inclúyelo SOLO si tiene impacto económico o de mercado directo.
+- Prioriza noticias con consecuencias económicas reales por sobre las meramente declarativas.
 - Relevancia de mayor a menor: Crítica, Alta, Media, Baja.
 - Horizonte: "Corto plazo", "Mediano plazo" o "Largo plazo".
 
-Estilo:
-- Español de Chile, tono de mesa de dinero: preciso, sobrio, sin adjetivos de más.
-- El "resumen" de cada noticia lo escribes como un periodista económico experto: lo más
-  concreto, claro y completo posible en 2 a 3 párrafos. Párrafo 1: qué pasó y quién
-  (el dato central). Párrafo 2: las cifras y detalles clave del texto. Párrafo 3:
-  contexto y qué viene. Frases directas, sin relleno. El lector queda completamente
-  informado sin abrir la fuente.
-- Cada campo de impacto: 1 a 2 oraciones.
-- "dimension_politica": cuando la noticia tiene lectura política (reformas, presupuesto,
-  regulación, nombramientos, tensiones Gobierno/oposición, elecciones), explica en 1 a 2
-  frases qué actor impulsa qué y con qué objetivo, y qué traba o riesgo político existe.
-  Sé neutral, sin tomar posición partidista. Si no aplica, deja la cadena vacía "".
-- Nada de markdown ni viñetas dentro de los textos.
+El "resumen" de cada noticia:
+- Son 2 a 3 párrafos, separados por un salto de línea doble (\\n\\n). Nunca más de 3.
+- Párrafo 1-2: cuenta la noticia como periodista experto — qué pasó, quién, las cifras
+  y actores clave mencionados en el texto. Concreto, claro, sin relleno.
+- Párrafo final: TU lectura, como analista, de cómo afecta esto a Chile en lo económico
+  (dólar, tasas, inflación, cobre, inversión, crecimiento, empleo — lo que aplique) y en
+  lo político (qué actor impulsa qué, qué traba o disputa existe). Sé neutral, sin postura
+  partidista. Si algún plano no aplica, no lo menciones.
+- El lector queda completamente informado sin abrir la fuente. Español de Chile, tono sobrio.
+- Nada de markdown, viñetas ni títulos dentro del texto.
 
-Respondes ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después, sin fences de código."""
+Respondes ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después, sin fences."""
 
 JSON_SHAPE = """{
-  "resumen_ejecutivo": "2 a 4 frases: la lectura del día para los mercados chilenos, hilando las noticias más importantes.",
+  "resumen_ejecutivo": "2 a 4 frases: la lectura del día para Chile, hilando lo más importante.",
   "dolar": {
     "titular": "titular breve del cierre cambiario",
-    "resumen": "2 a 3 párrafos separados por un salto de línea doble: qué pasó con el peso/dólar, los valores y factores mencionados en el texto, y el contexto.",
+    "resumen": "2-3 párrafos (\\n\\n entre ellos) según las reglas: qué pasó con el peso/dólar y tu lectura económica y política.",
     "relevancia": "Baja|Media|Alta|Crítica",
-    "horizonte": "Corto plazo|Mediano plazo|Largo plazo",
-    "impacto_chile": "…",
-    "impacto_global": "…",
-    "financiero": {"dolar": "…", "tasas": "…", "cobre": "…", "bolsa": "…", "inversion": "…"}
+    "horizonte": "Corto plazo|Mediano plazo|Largo plazo"
   },
   "noticias": [
     {
-      "id": <número del candidato elegido>,
+      "id": <número del candidato entre corchetes>,
       "titular": "titular breve y descriptivo",
-      "resumen": "2 a 3 párrafos separados por un salto de línea doble. Resume lo más importante del artículo: qué ocurrió, cifras y actores clave mencionados en el texto, contexto y qué sigue. El lector entiende la noticia sin abrir el link.",
+      "resumen": "2-3 párrafos (\\n\\n entre ellos) según las reglas: la noticia + tu lectura económica y política para Chile.",
       "relevancia": "Baja|Media|Alta|Crítica",
-      "horizonte": "Corto plazo|Mediano plazo|Largo plazo",
-      "impacto_chile": "impacto potencial en la economía chilena",
-      "impacto_global": "impacto potencial en la economía global (o 'Acotado a Chile')",
-      "dimension_politica": "lectura política de la noticia en 1-2 frases, o \"\" si no aplica",
-      "financiero": {"dolar": "…", "tasas": "…", "cobre": "…", "bolsa": "…", "inversion": "…"},
-      "por_que_importa": "una sola frase"
+      "horizonte": "Corto plazo|Mediano plazo|Largo plazo"
     }
   ],
   "bonus": [
-    {"titular": "titular breve", "comentario": "2 párrafos separados por un salto de línea doble que resumen el tema y por qué está generando debate", "relevancia": "Baja|Media|Alta|Crítica"}
+    {
+      "titular": "titular breve",
+      "resumen": "2 párrafos (\\n\\n entre ellos): el tema, por qué genera debate y tu lectura de sus implicancias.",
+      "relevancia": "Baja|Media|Alta|Crítica"
+    }
   ]
 }"""
 
 
-def get_ai_client():
-    if not ANTHROPIC_API_KEY:
-        return None
-    try:
-        import anthropic
-        return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    except Exception as e:
-        log(f"[WARN] No se pudo inicializar Anthropic SDK: {e}")
-        return None
-
-
-def analyze_newsletter(dollar_item: dict, candidates: list, bonus: list):
-    """Una sola llamada a Claude. Devuelve el dict de análisis o None (modo básico)."""
-    client = get_ai_client()
-    if not client:
-        log("[INFO] Sin ANTHROPIC_API_KEY — briefing en modo básico (sin análisis IA).")
-        return None
-
+def _build_prompt(dollar_item: dict, candidates: list, bonus: list) -> str:
     lines = [
         f"DÓLAR DE CIERRE (dato ya verificado, va como noticia #1): {dollar_item['dollar_value']}",
         "",
@@ -418,50 +398,92 @@ def analyze_newsletter(dollar_item: dict, candidates: list, bonus: list):
         dollar_item.get("_body") or dollar_item["title"],
         "",
         f"CANDIDATOS DE LA SECCIÓN ECONOMÍA DE EMOL — elige y ordena los {TOP_N} más relevantes",
-        "para la economía y los mercados chilenos (campo \"id\" = número entre corchetes; no",
-        "repitas el tema del dólar). Los marcados (Nacional) son respaldo: úsalos solo si tienen",
-        "impacto económico directo y superan a una nota de Economía:",
+        "para la economía chilena (campo \"id\" = número entre corchetes; no repitas el tema del",
+        "dólar). Los marcados (Nacional) son respaldo: úsalos solo si tienen impacto económico",
+        "directo y superan a una nota de Economía:",
         "",
     ]
     for i, c in enumerate(candidates, 1):
         lines.append(f"[{i}] ({c['category']}) {c['title']}")
         body = c.get("_body") or ""
         if body:
-            lines.append(f"    {first_sentences(body, 1600)}")
+            lines.append(f"    {first_sentences(body, 1700)}")
         lines.append("")
 
     if bonus:
-        lines.append("CANDIDATOS BONUS — sección '+ Comentado en Economía'. Analízalos en este mismo orden, "
-                     f"devuelve exactamente {len(bonus)} objetos en \"bonus\", no los reordenes:")
+        lines.append("CANDIDATOS BONUS — sección '+ Comentado en Economía'. Analízalos en este mismo "
+                     f"orden, devuelve exactamente {len(bonus)} objetos en \"bonus\", no los reordenes:")
         lines.append("")
         for i, b in enumerate(bonus, 1):
             lines.append(f"(B{i}) {b['title']}")
             body = b.get("_body") or ""
             if body:
-                lines.append(f"    {first_sentences(body, 1100)}")
+                lines.append(f"    {first_sentences(body, 1200)}")
             lines.append("")
 
-    lines.append(f'"noticias" debe tener exactamente {TOP_N} objetos, ordenados del más al menos '
-                 f'relevante para los mercados. Devuelve SOLO este JSON (exactamente esta forma):')
+    lines.append(f'"noticias" debe tener exactamente {TOP_N} objetos, del más al menos relevante. '
+                 f'Devuelve SOLO este JSON (exactamente esta forma):')
     lines.append(JSON_SHAPE)
-    prompt = "\n".join(lines)
+    return "\n".join(lines)
 
+
+def _call_gemini(system: str, user: str) -> str:
+    """Llama a Gemini (REST, free tier). Devuelve el texto (JSON) o lanza excepción."""
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    payload = {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": {
+            "temperature": 0.35,
+            "maxOutputTokens": 12000,
+            "responseMimeType": "application/json",
+            "thinkingConfig": {"thinkingBudget": 0},
+        },
+    }
+    r = requests.post(url, headers={"x-goog-api-key": GEMINI_API_KEY,
+                                    "Content-Type": "application/json"},
+                      json=payload, timeout=90)
+    if r.status_code != 200:
+        raise RuntimeError(f"Gemini HTTP {r.status_code}: {r.text[:300]}")
+    data = r.json()
+    cand = (data.get("candidates") or [{}])[0]
+    parts = cand.get("content", {}).get("parts", [])
+    text = "".join(p.get("text", "") for p in parts)
+    if not text:
+        raise RuntimeError(f"Gemini sin texto (finishReason={cand.get('finishReason')})")
+    return text
+
+
+def _call_anthropic(system: str, user: str) -> str:
+    import anthropic
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    resp = client.messages.create(model=AI_MODEL, max_tokens=16000,
+                                  system=system, messages=[{"role": "user", "content": user}])
+    return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+
+
+def analyze_newsletter(dollar_item: dict, candidates: list, bonus: list):
+    """Una llamada al modelo. Devuelve el dict de análisis o None (modo básico)."""
+    if GEMINI_API_KEY:
+        provider, call = "Gemini", _call_gemini
+    elif ANTHROPIC_API_KEY:
+        provider, call = "Anthropic", _call_anthropic
+    else:
+        log("[INFO] Sin GEMINI_API_KEY ni ANTHROPIC_API_KEY — briefing en modo básico.")
+        return None
+
+    prompt = _build_prompt(dollar_item, candidates, bonus)
     try:
-        resp = client.messages.create(
-            model=AI_MODEL,
-            max_tokens=16000,
-            system=SYSTEM_ANALISTA,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+        text = call(SYSTEM_ANALISTA, prompt)
         data = _extract_json(text)
         n_news = len(data.get("noticias", []))
         if not data.get("dolar") or n_news == 0:
             raise ValueError("JSON incompleto (sin dolar/noticias)")
-        log(f"[OK] Análisis IA con {AI_MODEL}: {n_news} noticias + dólar + lectura del día.")
+        log(f"[OK] Análisis con {provider}: {n_news} noticias + dólar + lectura del día.")
         return data
     except Exception as e:
-        log(f"[WARN] Falló el análisis IA ({e}) — briefing en modo básico.")
+        log(f"[WARN] Falló el análisis IA ({provider}: {e}) — briefing en modo básico.")
         return None
 
 
@@ -496,7 +518,7 @@ def apply_analysis(dollar_item: dict, candidates: list, bonus: list, analysis: d
             b["title"] = ba["titular"]
     for b in bonus:                           # bonus sin análisis → copete
         if "analysis" not in b:
-            b["summary"] = first_sentences(b.get("_body", ""))
+            b["summary"] = first_sentences(b.get("_body", ""), 900)
 
     return top[:TOP_N], _clean(analysis.get("resumen_ejecutivo", ""))
 
@@ -534,10 +556,6 @@ REL_STYLE = {
     "Media":   ("#E4E7D6", "#5A6338"),
     "Baja":    ("#ECE5D6", "#7C7060"),
 }
-FIN_KEYS = [
-    ("dolar", "DÓLAR"), ("tasas", "TASAS"), ("cobre", "COBRE"),
-    ("bolsa", "BOLSA"), ("inversion", "INVERSIÓN"),
-]
 
 
 def _pill(text: str, bg: str, fg: str) -> str:
@@ -571,58 +589,6 @@ def _clean_multiline(text: str) -> str:
     text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+", " ", text)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
-
-
-def _fin_table(fin: dict) -> str:
-    rows = ""
-    for k, label in FIN_KEYS:
-        val = _clean(fin.get(k, "")) or "Sin efecto directo previsible"
-        rows += (
-            f'<tr>'
-            f'<td style="padding:5px 12px 5px 0;white-space:nowrap;vertical-align:top;'
-            f'font-family:{MONO};font-size:10px;letter-spacing:1px;font-weight:600;'
-            f'color:{C["dim"]};width:78px">{label}</td>'
-            f'<td style="padding:5px 0;vertical-align:top;font-size:12.5px;'
-            f'color:{C["muted"]};line-height:1.55">{val}</td>'
-            f'</tr>'
-        )
-    return f'<table role="presentation" style="width:100%;border-collapse:collapse;margin-top:2px">{rows}</table>'
-
-
-def _impacto_block(a: dict, accent: str) -> str:
-    chile  = _clean(a.get("impacto_chile", ""))
-    glob   = _clean(a.get("impacto_global", ""))
-    pol    = _clean(a.get("dimension_politica", ""))
-    fin    = a.get("financiero") or {}
-    porque = _clean(a.get("por_que_importa", ""))
-    if not (chile or glob or pol or fin):
-        return ""
-
-    def _row(tag: str, val: str, last: bool = False) -> str:
-        mb = "0" if last else "7px"
-        return (f'<p style="margin:0 0 {mb};font-size:12.5px;line-height:1.6;color:{C["muted"]}">'
-                f'<span style="color:{C["text"]};font-weight:600">{tag}</span> &nbsp;{val}</p>')
-
-    html = (f'<div style="margin-top:18px;background:{C["inset"]};border:1px solid {C["line"]};'
-            f'border-radius:10px;padding:15px 17px">')
-    html += _mini_lbl("Impacto", accent)
-    if chile:
-        html += _row("Chile", chile, last=not (glob or pol))
-    if glob:
-        html += _row("Global", glob, last=not pol)
-    if pol:
-        html += _row("Política", pol, last=True)
-    if fin:
-        html += f'<div style="margin-top:14px;padding-top:13px;border-top:1px solid {C["line"]}">'
-        html += _mini_lbl("Mercados", accent)
-        html += _fin_table(fin)
-        html += '</div>'
-    html += '</div>'
-
-    if porque:
-        html += (f'<div style="margin-top:13px;padding-left:12px;border-left:2px solid {accent}">'
-                 f'<p style="margin:0;font-size:12.5px;color:{C["text"]};line-height:1.6">{porque}</p></div>')
-    return html
 
 
 def _link_row(url: str) -> str:
@@ -673,7 +639,6 @@ def _render_card(i: int, art: dict, accent: str) -> str:
         {title}
         {pills_row}
         {body_html}
-        {_impacto_block(a, accent)}
         {_link_row(art["url"])}
       </div>"""
 
@@ -683,7 +648,7 @@ def _render_bonus(art: dict) -> str:
     accent = C["cyan"]
     pills = _rel_pill(a["relevancia"]) if a.get("relevancia") else ""
     title = a.get("titular") or art["title"]
-    body_html = _paragraphs(a.get("comentario", "") or art.get("summary", ""), C["muted"], "12.5px")
+    body_html = _paragraphs(a.get("resumen", "") or art.get("summary", ""), C["muted"], "12.5px")
     body_html = f'<div style="margin-top:12px">{body_html}</div>' if body_html else ""
     return f"""
       <div class="card" style="background:{C['card']};border:1px solid {C['line']};border-left:2px solid {accent};border-radius:12px;padding:20px 22px;margin-bottom:12px">
@@ -698,9 +663,19 @@ def _render_bonus(art: dict) -> str:
 
 
 def build_html(dollar_item: dict, articles: list, bonus: list,
-               exec_summary: str = "") -> str:
+               exec_summary: str = "", public_url: str = "") -> str:
     date_str = date_in_spanish()
     all_items = [dollar_item] + articles
+
+    browser_bar = ""
+    if public_url:
+        browser_bar = (
+            f'<div style="max-width:660px;margin:0 auto;padding:10px 30px;background:{C["panel"]};'
+            f'border-bottom:1px solid {C["line"]};text-align:center">'
+            f'<a href="{public_url}" style="font-family:{MONO};font-size:10px;letter-spacing:1.5px;'
+            f'color:{C["cyan"]};text-decoration:none;text-transform:uppercase;font-weight:600">'
+            f'Ver esta edición en el navegador →</a></div>'
+        )
 
     ACCENTS = [C["cyan"], C["indigo"], "#7A8B4F", "#B0607A", "#A07C46"]
     cards_html = ""
@@ -771,6 +746,7 @@ def build_html(dollar_item: dict, articles: list, bonus: list,
 </style>
 </head>
 <body>
+{browser_bar}
 <div class="wrap">
 
   <div class="hd">
@@ -793,7 +769,8 @@ def build_html(dollar_item: dict, articles: list, bonus: list,
   <div class="ft">
     <p>Fuente &nbsp; emol.com — Economía y "+ Comentado en Economía"<br>
     Selección y análisis editorial generados automáticamente · {date_str}<br>
-    Este correo trae el briefing adjunto como archivo .html para abrirlo en el navegador.</p>
+    {f'<a href="{public_url}">{public_url}</a><br>' if public_url else ''}
+    Este correo también trae el briefing adjunto como archivo .html.</p>
   </div>
 
 </div>
@@ -808,6 +785,8 @@ def save_html_file(html: str) -> str:
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(html)
+        with open(os.path.join(OUTPUT_DIR, "index.html"), "w", encoding="utf-8") as f:
+            f.write(html)   # index.html = última edición (raíz de GitHub Pages)
     except Exception as e:
         log(f"[WARN] No se pudo guardar el HTML: {e}")
     return path
@@ -906,9 +885,13 @@ def main() -> None:
         log("[WARN] Sin noticias del día — correo solo con dólar y bonus.")
 
     log("Construyendo HTML…")
-    html = build_html(dollar_item, top, bonus, exec_summary)
+    public_url = (f"{PUBLIC_BASE_URL}/noticias_{now_chile().strftime('%Y-%m-%d')}.html"
+                  if PUBLIC_BASE_URL else "")
+    html = build_html(dollar_item, top, bonus, exec_summary, public_url)
     html_path = save_html_file(html)
     log(f"HTML guardado: {html_path}")
+    if public_url:
+        log(f"URL pública: {public_url}")
 
     today_str = now_chile().strftime("%d/%m/%Y")
     lead = ""
@@ -924,7 +907,9 @@ def main() -> None:
     for it in [dollar_item] + top:
         an = it.get("analysis") or {}
         text_lines.append("• " + (an.get("titular") or it["title"]))
-    text_lines += ["", "El briefing va también adjunto como archivo .html para abrirlo en el navegador."]
+    if public_url:
+        text_lines += ["", f"Ver en el navegador: {public_url}"]
+    text_lines += ["", "El briefing va también adjunto como archivo .html."]
     text_body = "\n".join(text_lines)
 
     if DRY_RUN:
