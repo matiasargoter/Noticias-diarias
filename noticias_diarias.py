@@ -11,9 +11,9 @@ Flujo:
      las 4 noticias de Economía más relevantes y redacta, por noticia, un resumen de
      2-3 párrafos estilo periodista experto que integra la lectura económica y política
      para Chile, más "Lectura del día". Sin GEMINI_API_KEY/ANTHROPIC_API_KEY → modo básico.
-  5. HTML (diseño cálido y claro) → se envía por Gmail SMTP como cuerpo del correo y
-     como archivo .html adjunto, y se publica en GitHub Pages (PUBLIC_BASE_URL) con
-     link "Ver en el navegador".
+  5. Correo (build_html, cálido/claro, seguro para Gmail) con las noticias en el cuerpo
+     + link a la edición completa. La versión "noticiero" (build_web_page, tipografía
+     de diario) se publica en GitHub Pages (PUBLIC_BASE_URL). Sin adjuntos.
 """
 
 import os
@@ -24,7 +24,6 @@ import json
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -368,9 +367,11 @@ Criterio editorial:
 - Horizonte: "Corto plazo", "Mediano plazo" o "Largo plazo".
 
 El "resumen" de cada noticia:
-- Son 2 a 3 párrafos, separados por un salto de línea doble (\\n\\n). Nunca más de 3.
-- Párrafo 1-2: cuenta la noticia como periodista experto — qué pasó, quién, las cifras
-  y actores clave mencionados en el texto. Concreto, claro, sin relleno.
+- Son 2 a 4 párrafos, separados por un salto de línea doble (\\n\\n). La mayoría 2-3;
+  usa 4 SOLO cuando la noticia tiene profundidad real que lo amerite (cifras, aristas,
+  antecedentes). Nunca más de 4, nunca menos de 2.
+- Párrafos iniciales: cuenta la noticia como periodista experto — qué pasó, quién, las
+  cifras y actores clave mencionados en el texto. Concreto, claro, sin relleno.
 - Párrafo final: TU lectura, como analista, de cómo afecta esto a Chile en lo económico
   (dólar, tasas, inflación, cobre, inversión, crecimiento, empleo — lo que aplique) y en
   lo político (qué actor impulsa qué, qué traba o disputa existe). Sé neutral, sin postura
@@ -381,10 +382,10 @@ El "resumen" de cada noticia:
 Respondes ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después, sin fences."""
 
 JSON_SHAPE = """{
-  "resumen_ejecutivo": "2 a 4 frases: la lectura del día para Chile, hilando lo más importante.",
+  "resumen_ejecutivo": "3 a 5 frases: la lectura del día para Chile, hilando lo más importante.",
   "dolar": {
     "titular": "titular breve del cierre cambiario",
-    "resumen": "2-3 párrafos (\\n\\n entre ellos) según las reglas: qué pasó con el peso/dólar y tu lectura económica y política.",
+    "resumen": "2-4 párrafos (\\n\\n entre ellos) según las reglas: qué pasó con el peso/dólar y tu lectura económica y política.",
     "relevancia": "Baja|Media|Alta|Crítica",
     "horizonte": "Corto plazo|Mediano plazo|Largo plazo"
   },
@@ -392,7 +393,7 @@ JSON_SHAPE = """{
     {
       "id": <número del candidato entre corchetes>,
       "titular": "titular breve y descriptivo",
-      "resumen": "2-3 párrafos (\\n\\n entre ellos) según las reglas: la noticia + tu lectura económica y política para Chile.",
+      "resumen": "2-4 párrafos (\\n\\n entre ellos) según las reglas: la noticia + tu lectura económica y política para Chile. 4 solo si lo amerita.",
       "relevancia": "Baja|Media|Alta|Crítica",
       "horizonte": "Corto plazo|Mediano plazo|Largo plazo"
     }
@@ -400,7 +401,7 @@ JSON_SHAPE = """{
   "bonus": [
     {
       "titular": "titular breve",
-      "resumen": "2 párrafos (\\n\\n entre ellos): el tema, por qué genera debate y tu lectura de sus implicancias.",
+      "resumen": "2-3 párrafos (\\n\\n entre ellos): el tema, por qué genera debate y tu lectura de sus implicancias.",
       "relevancia": "Baja|Media|Alta|Crítica"
     }
   ]
@@ -796,10 +797,232 @@ def build_html(dollar_item: dict, articles: list, bonus: list,
 
   <div class="ft">
     <p>Fuente &nbsp; emol.com — Economía y "+ Comentado en Economía"<br>
-    Selección y análisis editorial generados automáticamente · {date_str}<br>
-    {f'<a href="{public_url}">{public_url}</a><br>' if public_url else ''}
-    Este correo también trae el briefing adjunto como archivo .html.</p>
+    Selección y análisis editorial generados automáticamente · {date_str}
+    {f'<br><a href="{public_url}">Ver la edición completa</a>' if public_url else ''}</p>
   </div>
+
+</div>
+</body>
+</html>"""
+
+
+# ─────────────────────────────────────────────────────────
+# PÁGINA WEB — versión "noticiero" (adjunto del correo + GitHub Pages)
+# ─────────────────────────────────────────────────────────
+
+WEB_REL = {
+    "Crítica": ("#F2D9CE", "#8F3213"), "Critica": ("#F2D9CE", "#8F3213"),
+    "Alta":    ("#F3E4C4", "#875312"),
+    "Media":   ("#E3E6D3", "#55603A"),
+    "Baja":    ("#EAE3D2", "#776A54"),
+}
+
+
+def _web_paras(text: str, lead: bool = False) -> str:
+    parts = [p.strip() for p in re.split(r"\n\s*\n|\n", _clean_multiline(text)) if p.strip()]
+    if not parts:
+        return ""
+    out = []
+    for i, p in enumerate(parts):
+        cls = "lead" if (lead and i == 0) else ""
+        out.append(f'<p class="{cls}">{p}</p>')
+    return "".join(out)
+
+
+def _web_story(art: dict, kind: str = "story") -> str:
+    a = art.get("analysis") or {}
+    cat = art.get("category", "").upper()
+    rel = _clean(a.get("relevancia", ""))
+    hor = _clean(a.get("horizonte", ""))
+    rel_bg, rel_fg = WEB_REL.get(rel, WEB_REL["Media"])
+    rel_html = (f'<span class="rel" style="background:{rel_bg};color:{rel_fg}">{rel}</span>'
+                if rel else "")
+    kicker = f'<div class="kicker"><span class="cat">{cat}</span>{rel_html}</div>' if cat or rel_html else ""
+
+    title = a.get("titular") or art["title"]
+    dollar_head = ""
+    if art.get("is_dollar"):
+        dv = art["dollar_value"]
+        dollar_head = (f'<div class="ticker"><div class="t-lbl">Dólar observado · cierre</div>'
+                       f'<div class="t-val">{dv}</div></div>')
+
+    meta = []
+    if hor:
+        meta.append(f'Horizonte: {hor}')
+    meta_html = f'<div class="meta">{" &nbsp;·&nbsp; ".join(["Análisis"] + meta)}</div>'
+
+    body = a.get("resumen", "") or art.get("summary", "")
+    prose = _web_paras(body, lead=(kind in ("lead", "dollar")))
+    src = (f'<a class="src" href="{art["url"]}" target="_blank" rel="noopener">'
+           f'Leer la nota original en Emol&nbsp;→</a>')
+
+    return f"""
+    <article class="story {kind}">
+      {kicker}
+      {dollar_head}
+      <h2 class="headline">{title}</h2>
+      {meta_html}
+      <div class="prose">{prose}</div>
+      {src}
+    </article>"""
+
+
+def build_web_page(dollar_item: dict, articles: list, bonus: list,
+                   exec_summary: str = "", public_url: str = "") -> str:
+    date_str = date_in_spanish()
+    now = now_chile()
+    edicion = now.strftime("%H:%M")
+
+    stories = [_web_story(dollar_item, "dollar")]
+    for i, art in enumerate(articles):
+        stories.append(_web_story(art, "lead" if i == 0 else "story"))
+    stories_html = "".join(stories)
+
+    bonus_html = ""
+    if bonus:
+        bonus_html = (
+            '<section class="bonus"><div class="sec-head"><span>Lo más comentado</span>'
+            '<em>La conversación de los lectores en Emol Economía</em></div>'
+            + "".join(_web_story(b, "brief") for b in bonus)
+            + "</section>"
+        )
+
+    editorial = ""
+    if exec_summary:
+        editorial = (f'<section class="editorial"><div class="ed-lbl">La lectura del día</div>'
+                     f'<p>{exec_summary}</p></section>')
+
+    canonical = f'<link rel="canonical" href="{public_url}">' if public_url else ""
+
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="description" content="Briefing económico diario de Chile — análisis de las noticias de Emol Economía.">
+{canonical}
+<title>Briefing Económico · {date_str}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800;900&family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
+<style>
+  :root {{
+    --paper:#FBF7EF; --paper-2:#F4ECDB; --ink:#241B10; --body:#403626;
+    --muted:#7C6F58; --rule:#DBCFB6; --accent:#B24A1B; --accent-2:#8C6A22;
+    --serif:'Newsreader',Georgia,'Times New Roman',serif;
+    --disp:'Playfair Display',Georgia,serif;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }}
+  * {{ box-sizing:border-box; margin:0; padding:0; }}
+  html,body {{ overflow-x:hidden; max-width:100%; }}
+  body {{ background:var(--paper); color:var(--body); font-family:var(--serif);
+    -webkit-font-smoothing:antialiased; line-height:1.65; }}
+  .paper {{ width:100%; max-width:730px; margin:0 auto; padding:0 28px 72px;
+    background:var(--paper);
+    background-image:radial-gradient(circle at 1px 1px, rgba(140,106,34,.05) 1px, transparent 0);
+    background-size:22px 22px; }}
+  a {{ color:var(--accent); }}
+  .nameplate, .headline, .prose p, .editorial p, .dateline, .meta, .t-val {{ overflow-wrap:break-word; }}
+
+  .masthead {{ text-align:center; padding:40px 0 26px; }}
+  .mast-rule {{ border-top:3px double var(--ink); }}
+  .nameplate {{ font-family:var(--disp); font-weight:900; color:var(--ink);
+    font-size:46px; letter-spacing:-1px; line-height:1.02; margin:20px 0 12px; }}
+  .dateline {{ font-family:var(--sans); font-size:10.5px; letter-spacing:2.5px;
+    text-transform:uppercase; color:var(--muted); }}
+  .dateline.sub {{ font-size:9.5px; letter-spacing:2px; margin-top:6px; padding-bottom:18px; }}
+  .dateline b {{ color:var(--accent); font-weight:700; }}
+
+  .editorial {{ background:var(--paper-2); border:1px solid var(--rule);
+    border-left:3px solid var(--accent); padding:22px 26px; margin:26px 0 8px; }}
+  .ed-lbl {{ font-family:var(--sans); font-size:10px; letter-spacing:3px;
+    text-transform:uppercase; color:var(--accent); font-weight:700; margin-bottom:10px; }}
+  .editorial p {{ font-family:var(--serif); font-size:18px; line-height:1.7;
+    color:var(--ink); font-style:italic; }}
+
+  .story {{ padding:32px 0; border-top:1px solid var(--rule); }}
+  .story.dollar {{ border-top:none; padding-top:22px; }}
+  .kicker {{ display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin-bottom:12px; }}
+  .kicker .cat {{ font-family:var(--sans); font-size:11px; font-weight:700;
+    letter-spacing:2.5px; text-transform:uppercase; color:var(--accent); }}
+  .rel {{ font-family:var(--sans); font-size:10px; font-weight:700; letter-spacing:.5px;
+    text-transform:uppercase; padding:2px 9px; border-radius:3px; }}
+  .headline {{ font-family:var(--disp); color:var(--ink); font-weight:800;
+    font-size:27px; line-height:1.18; letter-spacing:-.3px; margin:2px 0 10px; }}
+  .story.lead .headline {{ font-size:34px; }}
+  .story.brief .headline {{ font-size:21px; font-weight:700; }}
+  .meta {{ font-family:var(--sans); font-size:11.5px; letter-spacing:.4px;
+    color:var(--muted); text-transform:uppercase; margin-bottom:16px; }}
+  .prose p {{ font-family:var(--serif); font-size:17.5px; line-height:1.75;
+    color:var(--body); margin-bottom:15px; }}
+  .prose p.lead {{ font-size:19px; color:var(--ink); }}
+  .story.lead .prose p.lead::first-letter {{ font-family:var(--disp); float:left;
+    font-size:64px; line-height:.82; font-weight:800; color:var(--accent);
+    padding:6px 10px 0 0; }}
+  .ticker {{ display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;
+    background:var(--paper-2); border:1px solid var(--rule); padding:16px 20px;
+    margin:6px 0 18px; }}
+  .t-lbl {{ font-family:var(--sans); font-size:10px; letter-spacing:2.5px;
+    text-transform:uppercase; color:var(--muted); font-weight:700; }}
+  .t-val {{ font-family:var(--disp); font-size:38px; font-weight:800; color:var(--ink);
+    letter-spacing:-.5px; }}
+  .src {{ display:inline-block; margin-top:6px; font-family:var(--sans); font-size:12.5px;
+    font-weight:600; color:var(--accent); text-decoration:none;
+    border-bottom:1px solid currentColor; padding-bottom:1px; }}
+
+  .bonus {{ margin-top:14px; }}
+  .sec-head {{ text-align:center; border-top:3px double var(--ink); padding-top:16px; margin-top:20px; }}
+  .sec-head span {{ display:block; font-family:var(--disp); font-weight:800;
+    font-size:22px; color:var(--ink); }}
+  .sec-head em {{ font-family:var(--sans); font-size:11px; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--muted); font-style:normal; }}
+  .bonus .story {{ padding:24px 0; }}
+
+  .colophon {{ margin-top:44px; border-top:1px solid var(--rule); padding-top:22px;
+    text-align:center; font-family:var(--sans); font-size:11px; line-height:1.9;
+    color:var(--muted); letter-spacing:.3px; }}
+  .colophon a {{ color:var(--accent); word-break:break-all; }}
+
+  @media (max-width:600px) {{
+    .paper {{ padding:0 15px 56px; }}
+    .nameplate {{ font-size:29px; letter-spacing:-.5px; }}
+    .headline {{ font-size:22px; }}
+    .story.lead .headline {{ font-size:25px; }}
+    .editorial {{ padding:18px 16px; }}
+    .editorial p {{ font-size:16px; }}
+    .ticker {{ flex-direction:column; align-items:flex-start; gap:4px; padding:14px 16px; }}
+    .t-val {{ font-size:27px; }}
+    .story.lead .prose p.lead::first-letter {{ font-size:46px; }}
+    .prose p {{ font-size:16.5px; }}
+    .dateline {{ font-size:9px; letter-spacing:1.5px; }}
+  }}
+</style>
+</head>
+<body>
+<div class="paper">
+
+  <header class="masthead">
+    <div class="mast-rule"></div>
+    <div class="nameplate">Briefing Económico</div>
+    <div class="dateline">Santiago de Chile &nbsp;·&nbsp; {date_str}</div>
+    <div class="dateline sub">Edición de las {edicion} &nbsp;·&nbsp; Fuente: <b>Emol Economía</b> &nbsp;·&nbsp; Análisis con IA</div>
+    <div class="mast-rule"></div>
+  </header>
+
+  {editorial}
+
+  {stories_html}
+
+  {bonus_html}
+
+  <footer class="colophon">
+    Briefing Económico es un resumen automatizado de la sección Economía de Emol y de
+    "+ Comentado en Economía". Selección y análisis generados con IA a partir de esos
+    artículos; no constituye asesoría financiera.<br>
+    Edición del {date_str}.
+    {f'<br><a href="{public_url}">{public_url}</a>' if public_url else ''}
+  </footer>
 
 </div>
 </body>
@@ -824,31 +1047,18 @@ def save_html_file(html: str) -> str:
 # EMAIL
 # ─────────────────────────────────────────────────────────
 
-def send_email(subject: str, html_body: str, text_body: str = "", attach_path: str = "") -> None:
+def send_email(subject: str, html_body: str, text_body: str = "") -> None:
     if GMAIL_APP_PASSWORD in ("", "PONER_AQUI_CONTRASEÑA_DE_APP"):
         log("[ERROR] Falta configurar GMAIL_APP_PASSWORD")
         sys.exit(1)
 
-    msg = MIMEMultipart("mixed")
+    msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = GMAIL_USER
     msg["To"] = RECIPIENT_EMAIL
-
-    body = MIMEMultipart("alternative")
     if text_body:
-        body.attach(MIMEText(text_body, "plain", "utf-8"))
-    body.attach(MIMEText(html_body, "html", "utf-8"))
-    msg.attach(body)
-
-    if attach_path and os.path.exists(attach_path):
-        try:
-            with open(attach_path, "rb") as f:
-                part = MIMEApplication(f.read(), _subtype="html")
-            part.add_header("Content-Disposition", "attachment",
-                            filename=os.path.basename(attach_path))
-            msg.attach(part)
-        except Exception as e:
-            log(f"[WARN] No se pudo adjuntar {attach_path}: {e}")
+        msg.attach(MIMEText(text_body, "plain", "utf-8"))
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     for attempt in range(1, 4):
         try:
@@ -915,8 +1125,9 @@ def main() -> None:
     log("Construyendo HTML…")
     public_url = (f"{PUBLIC_BASE_URL}/noticias_{now_chile().strftime('%Y-%m-%d')}.html"
                   if PUBLIC_BASE_URL else "")
-    html = build_html(dollar_item, top, bonus, exec_summary, public_url)
-    html_path = save_html_file(html)
+    email_html = build_html(dollar_item, top, bonus, exec_summary, public_url)   # cuerpo del correo
+    web_html   = build_web_page(dollar_item, top, bonus, exec_summary, public_url)  # página / Pages
+    html_path  = save_html_file(web_html)
     log(f"HTML guardado: {html_path}")
     if public_url:
         log(f"URL pública: {public_url}")
@@ -936,15 +1147,14 @@ def main() -> None:
         an = it.get("analysis") or {}
         text_lines.append("• " + (an.get("titular") or it["title"]))
     if public_url:
-        text_lines += ["", f"Ver en el navegador: {public_url}"]
-    text_lines += ["", "El briefing va también adjunto como archivo .html."]
+        text_lines += ["", f"Ver la edición completa: {public_url}"]
     text_body = "\n".join(text_lines)
 
     if DRY_RUN:
         log(f"[DRY_RUN] No se envía email. Abre: open \"{html_path}\"")
     else:
         log("Enviando email vía Gmail SMTP…")
-        send_email(subject, html, text_body, attach_path=html_path)
+        send_email(subject, email_html, text_body)
 
     log("=== Proceso completado ✓ ===")
 
