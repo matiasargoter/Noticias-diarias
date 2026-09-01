@@ -8,9 +8,14 @@ on:
     - cron: '30 21 * * 1-5'
   workflow_dispatch: # permite correrlo manualmente desde GitHub
 
+permissions:
+  contents: write   # para publicar el HTML en la rama `pages`
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   TZ: America/Santiago
+  # URL pública del briefing (GitHub Pages sirviendo la rama `pages`)
+  PUBLIC_BASE_URL: https://matiasargoter.github.io/Noticias-diarias
 
 jobs:
   enviar-noticias:
@@ -26,12 +31,39 @@ jobs:
           python-version: '3.11'
 
       - name: Instalar dependencias
-        run: pip install requests beautifulsoup4
+        run: pip install requests beautifulsoup4 anthropic
 
-      - name: Ejecutar script
+      - name: Ejecutar script (scrape + análisis IA + email)
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
-          OUTPUT_DIR: /tmp
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OUTPUT_DIR: ${{ github.workspace }}/site
         run: python "noticias_diarias.py"
+
+      - name: Publicar en GitHub Pages (rama pages)
+        run: |
+          set -e
+          git config user.name  "noticias-bot"
+          git config user.email "noticias-bot@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin pages >/dev/null 2>&1; then
+            git fetch origin pages:refs/remotes/origin/pages
+            git worktree add site_pages refs/remotes/origin/pages
+            git -C site_pages checkout -B pages
+          else
+            git worktree add --detach site_pages
+            git -C site_pages checkout --orphan pages
+            git -C site_pages rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          cp -f site/*.html site_pages/
+          touch site_pages/.nojekyll
+
+          # conservar solo los últimos 40 briefings fechados
+          ls -1 site_pages/noticias_*.html 2>/dev/null | sort | head -n -40 | xargs -r rm -f
+
+          git -C site_pages add -f -A
+          git -C site_pages commit -m "briefing $(date -u +%F)" || { echo "sin cambios"; exit 0; }
+          git -C site_pages push origin HEAD:pages
