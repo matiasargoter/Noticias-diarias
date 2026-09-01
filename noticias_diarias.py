@@ -163,7 +163,8 @@ def get_emol_dollar() -> dict:
     """Artículo del dólar de hoy en Emol + valor de cierre. Fallback: mindicador.cl."""
     today = now_chile()
     date_path = f"/{today.year}/{today.month:02d}/{today.day:02d}/"
-    kw = ["dólar", "dollar", "tipo de cambio", "mercado cambiario", "divisa"]
+    kw = ["dólar", "dolar", "dollar", "tipo de cambio", "mercado cambiario",
+          "divisa", "peso chileno", "moneda"]
 
     art_url = art_title = None
     for search_url in ["https://www.emol.com/", "https://www.emol.com/noticias/Economia/"]:
@@ -177,8 +178,9 @@ def get_emol_dollar() -> dict:
                 if date_path not in href or "/noticias/Economia/" not in href:
                     continue
                 title = _clean(a.get_text(" ", strip=True))
-                if any(k in title.lower() for k in kw):
-                    art_url, art_title = href, title
+                slug = href.rsplit("/", 1)[-1].lower()
+                if any(k in title.lower() for k in kw) or "dolar" in slug or "cambiario" in slug:
+                    art_url, art_title = href, title or "Mercado cambiario"
                     break
             if art_url:
                 break
@@ -191,15 +193,21 @@ def get_emol_dollar() -> dict:
         _, value_str = extract_dollar_value(body)
 
     if not value_str:
-        try:
-            r = requests.get("https://mindicador.cl/api/dolar", headers=HEADERS, timeout=10)
-            serie = r.json()["serie"][0]
-            val, val_date = serie["valor"], serie["fecha"][:10]
-            value_str = f"${val:,.2f}".replace(",", ".")
-            if val_date != today.strftime("%Y-%m-%d"):
-                value_str += f" (cierre {val_date})"
-                log(f"[WARN] Dólar mindicador.cl es de {val_date}, no de hoy")
-        except Exception:
+        for attempt in range(1, 4):
+            try:
+                r = requests.get("https://mindicador.cl/api/dolar", headers=HEADERS, timeout=10)
+                serie = r.json()["serie"][0]
+                val, val_date = serie["valor"], serie["fecha"][:10]
+                value_str = f"${val:,.2f}".replace(",", ".")
+                if val_date != today.strftime("%Y-%m-%d"):
+                    value_str += f" (cierre {val_date})"
+                    log(f"[WARN] Dólar mindicador.cl es de {val_date}, no de hoy")
+                break
+            except Exception as e:
+                log(f"[WARN] mindicador.cl intento {attempt}/3: {e}")
+                if attempt < 3:
+                    time.sleep(4)
+        if not value_str:
             value_str = "No disponible"
 
     return {
@@ -643,8 +651,10 @@ def _render_card(i: int, art: dict, accent: str) -> str:
     pills_row = f'<div style="margin-top:14px">{pills}</div>' if pills else ""
 
     if art.get("is_dollar"):
-        headline = (f'<div style="font-family:{MONO};font-size:44px;font-weight:700;color:{C["text"]};'
-                    f'letter-spacing:-1px;line-height:1;margin:18px 0 10px">{art["dollar_value"]}</div>')
+        dv = art["dollar_value"]
+        size = "44px" if dv.strip().startswith("$") else "20px"
+        headline = (f'<div style="font-family:{MONO};font-size:{size};font-weight:700;color:{C["text"]};'
+                    f'letter-spacing:-1px;line-height:1.1;margin:18px 0 10px">{dv}</div>')
         title = (f'<h2 style="font-size:15px;font-weight:600;color:{C["muted"]};line-height:1.4;'
                  f'margin:0 0 4px">{a.get("titular") or art["title"]}</h2>')
     else:
