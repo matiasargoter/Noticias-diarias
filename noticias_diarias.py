@@ -156,10 +156,17 @@ _MESES_RE = ("enero|febrero|marzo|abril|mayo|junio|julio|agosto|"
 
 
 def _strip_byline(text: str) -> str:
-    """Quita la firma/fechado de Emol ('01 de Septiembre de 2026 | 13:29 | Por X, Emol.')."""
-    text = re.sub(rf"\s*\d{{1,2}}\s+de\s+(?:{_MESES_RE})\s+de\s+\d{{4}}\s*\|\s*\d{{1,2}}:\d{{2}}"
-                  r"(?:\s*\|\s*Por\s+[^.]+?)?\.?\s*$", "", text, flags=re.IGNORECASE).strip()
-    text = re.sub(r"\s*\|\s*Por\s+[^|]+?,\s*Emol\.?\s*$", "", text, flags=re.IGNORECASE).strip()
+    """Quita la firma/fechado de Emol ('… 01 de Septiembre de 2026 | 13:29 | Por X, Emol.')."""
+    text = (text or "").strip()
+    for _ in range(3):
+        prev = text
+        # "| Por Autor(, Emol).")  al final
+        text = re.sub(r"\s*\|\s*Por\s+[^|]{2,90}?\.?\s*$", "", text, flags=re.IGNORECASE).strip()
+        # "DD de Mes de AAAA( | HH:MM)"  al final
+        text = re.sub(rf"\s*\d{{1,2}}\s+de\s+(?:{_MESES_RE})\s+de\s+\d{{4}}"
+                      r"(?:\s*\|\s*\d{1,2}:\d{2})?\.?\s*$", "", text, flags=re.IGNORECASE).strip()
+        if text == prev:
+            break
     return text
 
 
