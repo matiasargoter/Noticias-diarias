@@ -129,12 +129,12 @@ def fetch_article_body(url: str, max_chars: int = 3600) -> str:
         return ""
 
     parts = []
-    copete = _extract_copete(soup)
+    copete = _strip_byline(_extract_copete(soup))
     if copete:
         parts.append(copete)
 
     for p in soup.find_all("p"):
-        t = _clean(p.get_text(" ", strip=True))
+        t = _strip_byline(_clean(p.get_text(" ", strip=True)))
         low = t.lower()
         if any(w in low for w in ["cookie", "suscrí", "suscri", "publicidad", "javascript",
                                   "newsletter", "©", "derechos reservados"]):
@@ -146,6 +146,18 @@ def fetch_article_body(url: str, max_chars: int = 3600) -> str:
             break
 
     return _clean(" ".join(parts))[:max_chars]
+
+
+_MESES_RE = ("enero|febrero|marzo|abril|mayo|junio|julio|agosto|"
+             "septiembre|setiembre|octubre|noviembre|diciembre")
+
+
+def _strip_byline(text: str) -> str:
+    """Quita la firma/fechado de Emol ('01 de Septiembre de 2026 | 13:29 | Por X, Emol.')."""
+    text = re.sub(rf"\s*\d{{1,2}}\s+de\s+(?:{_MESES_RE})\s+de\s+\d{{4}}\s*\|\s*\d{{1,2}}:\d{{2}}"
+                  r"(?:\s*\|\s*Por\s+[^.]+?)?\.?\s*$", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"\s*\|\s*Por\s+[^|]+?,\s*Emol\.?\s*$", "", text, flags=re.IGNORECASE).strip()
+    return text
 
 
 def get_emol_dollar() -> dict:
