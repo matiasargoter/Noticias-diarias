@@ -11,8 +11,8 @@ Flujo:
      más mueven el mercado y genera, por noticia, el bloque editorial del CLAUDE.md
      (Impacto Chile/Global, dimensión política si aplica, Impacto Financiero,
      Relevancia, Horizonte) + una "Lectura del día". Sin ANTHROPIC_API_KEY → modo básico.
-  5. HTML (diseño dark minimalista) + envío por Gmail SMTP + copia publicada en
-     PUBLIC_BASE_URL (GitHub Pages) con link "Ver en el navegador".
+  5. HTML (diseño dark minimalista) → se envía por Gmail SMTP como cuerpo del correo
+     Y como archivo .html adjunto, para abrirlo en el navegador. No hay sitio público.
 """
 
 import os
@@ -23,6 +23,7 @@ import json
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -46,8 +47,6 @@ OUTPUT_DIR         = os.environ.get("OUTPUT_DIR",         "/Users/matiasargote/D
 ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY",  "")
 AI_MODEL           = os.environ.get("AI_MODEL",           "claude-opus-5")
 DRY_RUN            = os.environ.get("DRY_RUN", "") not in ("", "0", "false", "False")
-# URL pública donde queda publicado el briefing (GitHub Pages). Vacío = sin link.
-PUBLIC_BASE_URL    = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 # ─────────────────────────────────────────────────────────
 
 HEADERS = {
@@ -85,7 +84,7 @@ def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
 
 
-def first_sentences(text: str, max_chars: int = 480) -> str:
+def first_sentences(text: str, max_chars: int = 650) -> str:
     """Primeras frases de un texto, cortadas de forma limpia."""
     text = _clean(text)
     if len(text) <= max_chars:
@@ -341,9 +340,11 @@ Criterio editorial:
 
 Estilo:
 - Español de Chile, tono de mesa de dinero: preciso, sobrio, sin adjetivos de más.
-- El "resumen" de cada noticia son 2 a 3 párrafos que cuentan la noticia: qué ocurrió,
-  cifras y actores clave mencionados en el texto, contexto y qué sigue. El lector no
-  necesita abrir el link para entender la noticia.
+- El "resumen" de cada noticia lo escribes como un periodista económico experto: lo más
+  concreto, claro y completo posible en 2 a 3 párrafos. Párrafo 1: qué pasó y quién
+  (el dato central). Párrafo 2: las cifras y detalles clave del texto. Párrafo 3:
+  contexto y qué viene. Frases directas, sin relleno. El lector queda completamente
+  informado sin abrir la fuente.
 - Cada campo de impacto: 1 a 2 oraciones.
 - "dimension_politica": cuando la noticia tiene lectura política (reformas, presupuesto,
   regulación, nombramientos, tensiones Gobierno/oposición, elecciones), explica en 1 a 2
@@ -503,27 +504,27 @@ def date_in_spanish() -> str:
     return raw
 
 
-# ── Paleta minimalista / futurista (dark) ────────────────
+# ── Paleta minimalista, cálida y clara ───────────────────
 C = {
-    "page":   "#07070B",
-    "panel":  "#0E0E15",
-    "card":   "#12121B",
-    "inset":  "#0A0A11",
-    "line":   "#22222E",
-    "text":   "#E8E8F0",
-    "muted":  "#9C9CB0",
-    "dim":    "#6C6C80",
-    "indigo": "#8B7CF6",
-    "cyan":   "#34D6C6",
+    "page":   "#FAF6EF",   # crema papel
+    "panel":  "#F2EBDF",   # crema más profundo
+    "card":   "#FFFDF8",   # blanco cálido
+    "inset":  "#F6EFE2",   # bloque de impacto
+    "line":   "#E7DDCB",   # borde cálido
+    "text":   "#33291E",   # café muy oscuro (no negro)
+    "muted":  "#6E6252",   # gris cálido
+    "dim":    "#9C8F7C",   # gris cálido claro
+    "indigo": "#B0752C",   # dorado (acento secundario)
+    "cyan":   "#BE5B2A",   # terracota (acento primario)
 }
 MONO = "'SF Mono','SFMono-Regular',ui-monospace,'Roboto Mono',Menlo,Consolas,monospace"
 
 REL_STYLE = {
-    "Crítica": ("rgba(244,63,94,.16)",   "#FB7185"),
-    "Critica": ("rgba(244,63,94,.16)",   "#FB7185"),
-    "Alta":    ("rgba(251,146,60,.16)",  "#FDBA74"),
-    "Media":   ("rgba(96,165,250,.16)",  "#93C5FD"),
-    "Baja":    ("rgba(148,163,184,.14)", "#9CA3AF"),
+    "Crítica": ("#F6DAD0", "#9E3418"),
+    "Critica": ("#F6DAD0", "#9E3418"),
+    "Alta":    ("#F5E3C6", "#8F5A15"),
+    "Media":   ("#E4E7D6", "#5A6338"),
+    "Baja":    ("#ECE5D6", "#7C7060"),
 }
 FIN_KEYS = [
     ("dolar", "DÓLAR"), ("tasas", "TASAS"), ("cobre", "COBRE"),
@@ -638,13 +639,13 @@ def _render_card(i: int, art: dict, accent: str) -> str:
     if a.get("relevancia"):
         pills += _rel_pill(a["relevancia"])
     if a.get("horizonte"):
-        pills += _pill(a["horizonte"], "rgba(139,124,246,.14)", "#B3A7F9")
+        pills += _pill(a["horizonte"], "#EDE4D2", "#7A6B52")
     pills_row = f'<div style="margin-top:14px">{pills}</div>' if pills else ""
 
     if art.get("is_dollar"):
         headline = (f'<div style="font-family:{MONO};font-size:44px;font-weight:700;color:{C["text"]};'
                     f'letter-spacing:-1px;line-height:1;margin:18px 0 10px">{art["dollar_value"]}</div>')
-        title = (f'<h2 style="font-size:15px;font-weight:600;color:#C7C7D6;line-height:1.4;'
+        title = (f'<h2 style="font-size:15px;font-weight:600;color:{C["muted"]};line-height:1.4;'
                  f'margin:0 0 4px">{a.get("titular") or art["title"]}</h2>')
     else:
         headline = ""
@@ -687,20 +688,11 @@ def _render_bonus(art: dict) -> str:
 
 
 def build_html(dollar_item: dict, articles: list, bonus: list,
-               exec_summary: str = "", public_url: str = "") -> str:
+               exec_summary: str = "") -> str:
     date_str = date_in_spanish()
     all_items = [dollar_item] + articles
 
-    browser_bar = ""
-    if public_url:
-        browser_bar = (
-            f'<div style="max-width:660px;margin:0 auto;padding:9px 30px;background:{C["panel"]};'
-            f'border-bottom:1px solid {C["line"]};text-align:right">'
-            f'<a href="{public_url}" style="font-family:{MONO};font-size:10px;letter-spacing:1px;'
-            f'color:{C["dim"]};text-decoration:none;text-transform:uppercase">Ver en el navegador →</a></div>'
-        )
-
-    ACCENTS = [C["cyan"], C["indigo"], "#60A5FA", "#F472B6", "#FBBF24"]
+    ACCENTS = [C["cyan"], C["indigo"], "#7A8B4F", "#B0607A", "#A07C46"]
     cards_html = ""
     for i, art in enumerate(all_items, 1):
         cards_html += _render_card(i, art, ACCENTS[min(i - 1, len(ACCENTS) - 1)])
@@ -729,24 +721,25 @@ def build_html(dollar_item: dict, articles: list, bonus: list,
     if has_ai:
         legend = (f'<div style="font-family:{MONO};margin:-4px 0 20px;font-size:9.5px;'
                   f'color:{C["dim"]};line-height:1.7;letter-spacing:.5px">'
-                  'RELEVANCIA &nbsp; <span style="color:#FB7185">◆ CRÍTICA</span> &nbsp;'
-                  '<span style="color:#FDBA74">◆ ALTA</span> &nbsp;'
-                  '<span style="color:#93C5FD">◆ MEDIA</span> &nbsp;'
-                  '<span style="color:#9CA3AF">◆ BAJA</span></div>')
+                  'RELEVANCIA &nbsp; <span style="color:#9E3418">◆ CRÍTICA</span> &nbsp;'
+                  '<span style="color:#8F5A15">◆ ALTA</span> &nbsp;'
+                  '<span style="color:#5A6338">◆ MEDIA</span> &nbsp;'
+                  '<span style="color:#7C7060">◆ BAJA</span></div>')
 
     return f"""<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="color-scheme" content="dark">
-<meta name="supported-color-schemes" content="dark">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
 <title>Briefing Económico Chile — {date_str}</title>
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{
     font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
     background: {C['page']};
+    color: {C['text']};
     -webkit-font-smoothing: antialiased;
   }}
   a {{ color: {C['cyan']}; }}
@@ -768,7 +761,6 @@ def build_html(dollar_item: dict, articles: list, bonus: list,
 </style>
 </head>
 <body>
-{browser_bar}
 <div class="wrap">
 
   <div class="hd">
@@ -790,8 +782,8 @@ def build_html(dollar_item: dict, articles: list, bonus: list,
 
   <div class="ft">
     <p>Fuente &nbsp; emol.com — Economía y "+ Comentado en Economía"<br>
-    Selección y análisis editorial generados automáticamente · {date_str}
-    {f'<br><a href="{public_url}">{public_url}</a>' if public_url else ''}</p>
+    Selección y análisis editorial generados automáticamente · {date_str}<br>
+    Este correo trae el briefing adjunto como archivo .html para abrirlo en el navegador.</p>
   </div>
 
 </div>
@@ -806,9 +798,6 @@ def save_html_file(html: str) -> str:
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(html)
-        # index.html = último briefing (para la URL pública "raíz")
-        with open(os.path.join(OUTPUT_DIR, "index.html"), "w", encoding="utf-8") as f:
-            f.write(html)
     except Exception as e:
         log(f"[WARN] No se pudo guardar el HTML: {e}")
     return path
@@ -818,18 +807,31 @@ def save_html_file(html: str) -> str:
 # EMAIL
 # ─────────────────────────────────────────────────────────
 
-def send_email(subject: str, html_body: str, text_body: str = "") -> None:
+def send_email(subject: str, html_body: str, text_body: str = "", attach_path: str = "") -> None:
     if GMAIL_APP_PASSWORD in ("", "PONER_AQUI_CONTRASEÑA_DE_APP"):
         log("[ERROR] Falta configurar GMAIL_APP_PASSWORD")
         sys.exit(1)
 
-    msg = MIMEMultipart("alternative")
+    msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
     msg["From"] = GMAIL_USER
     msg["To"] = RECIPIENT_EMAIL
+
+    body = MIMEMultipart("alternative")
     if text_body:
-        msg.attach(MIMEText(text_body, "plain", "utf-8"))
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
+        body.attach(MIMEText(text_body, "plain", "utf-8"))
+    body.attach(MIMEText(html_body, "html", "utf-8"))
+    msg.attach(body)
+
+    if attach_path and os.path.exists(attach_path):
+        try:
+            with open(attach_path, "rb") as f:
+                part = MIMEApplication(f.read(), _subtype="html")
+            part.add_header("Content-Disposition", "attachment",
+                            filename=os.path.basename(attach_path))
+            msg.attach(part)
+        except Exception as e:
+            log(f"[WARN] No se pudo adjuntar {attach_path}: {e}")
 
     for attempt in range(1, 4):
         try:
@@ -894,12 +896,9 @@ def main() -> None:
         log("[WARN] Sin noticias del día — correo solo con dólar y bonus.")
 
     log("Construyendo HTML…")
-    public_url = f"{PUBLIC_BASE_URL}/noticias_{now_chile().strftime('%Y-%m-%d')}.html" if PUBLIC_BASE_URL else ""
-    html = build_html(dollar_item, top, bonus, exec_summary, public_url)
+    html = build_html(dollar_item, top, bonus, exec_summary)
     html_path = save_html_file(html)
     log(f"HTML guardado: {html_path}")
-    if public_url:
-        log(f"URL pública: {public_url}")
 
     today_str = now_chile().strftime("%d/%m/%Y")
     lead = ""
@@ -915,15 +914,14 @@ def main() -> None:
     for it in [dollar_item] + top:
         an = it.get("analysis") or {}
         text_lines.append("• " + (an.get("titular") or it["title"]))
-    if public_url:
-        text_lines += ["", f"Ver en el navegador: {public_url}"]
+    text_lines += ["", "El briefing va también adjunto como archivo .html para abrirlo en el navegador."]
     text_body = "\n".join(text_lines)
 
     if DRY_RUN:
         log(f"[DRY_RUN] No se envía email. Abre: open \"{html_path}\"")
     else:
         log("Enviando email vía Gmail SMTP…")
-        send_email(subject, html, text_body)
+        send_email(subject, html, text_body, attach_path=html_path)
 
     log("=== Proceso completado ✓ ===")
 
