@@ -2,19 +2,24 @@ name: Noticias Diarias Chile
 
 on:
   schedule:
-    # Invierno (abr–sep): 22:30 UTC = 18:30 CLT (UTC-4)
-    - cron: '30 22 * * 1-5'
-    # Verano  (oct–mar): 21:30 UTC = 18:30 CLT (UTC-3)
-    - cron: '30 21 * * 1-5'
-  workflow_dispatch: # permite correrlo manualmente desde GitHub
+    # Chile usa UTC-4 (abr–sep) y UTC-3 en horario de verano (sep–abr).
+    # Cada cron apunta a 18:30 CLT en una de las dos épocas; el otro queda 1 h
+    # corrido. El guard del script (franja 18–21 CLT) + el chequeo "ya publicado
+    # hoy" de este workflow evitan el doble envío y toleran los atrasos de GitHub.
+    - cron: '30 22 * * 1-5'   # 22:30 UTC = 18:30 CLT con UTC-4
+    - cron: '30 21 * * 1-5'   # 21:30 UTC = 18:30 CLT con UTC-3
+  workflow_dispatch:
 
 permissions:
   contents: write   # para publicar el HTML en la rama `pages`
 
+concurrency:
+  group: noticias-diarias
+  cancel-in-progress: false
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   TZ: America/Santiago
-  # URL pública del briefing (GitHub Pages sirviendo la rama `pages`)
   PUBLIC_BASE_URL: https://matiasargoter.github.io/Noticias-diarias
 
 jobs:
@@ -25,15 +30,35 @@ jobs:
       - name: Checkout código
         uses: actions/checkout@v4
 
+      - name: ¿El briefing de hoy ya se publicó?
+        id: gate
+        run: |
+          HOY=$(date +%F)
+          echo "hoy=$HOY" >> "$GITHUB_OUTPUT"
+          ALREADY=false
+          if git ls-remote --exit-code --heads origin pages >/dev/null 2>&1; then
+            git fetch --depth=1 origin pages
+            if git cat-file -e "FETCH_HEAD:noticias_${HOY}.html" 2>/dev/null; then
+              ALREADY=true
+            fi
+          fi
+          echo "already=$ALREADY" >> "$GITHUB_OUTPUT"
+          if [ "$ALREADY" = "true" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "::notice::El briefing de $HOY ya está publicado — se omite esta corrida programada."
+          fi
+
       - name: Instalar Python 3.11
+        if: ${{ github.event_name != 'schedule' || steps.gate.outputs.already != 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Instalar dependencias
+        if: ${{ github.event_name != 'schedule' || steps.gate.outputs.already != 'true' }}
         run: pip install requests beautifulsoup4
 
       - name: Ejecutar script (scrape + análisis IA + email)
+        if: ${{ github.event_name != 'schedule' || steps.gate.outputs.already != 'true' }}
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
@@ -43,8 +68,13 @@ jobs:
         run: python "noticias_diarias.py"
 
       - name: Publicar en GitHub Pages (rama pages)
+        if: ${{ github.event_name != 'schedule' || steps.gate.outputs.already != 'true' }}
         run: |
           set -e
+          if ! ls site/*.html >/dev/null 2>&1; then
+            echo "No hay HTML nuevo (script omitido o fuera de franja) — nada que publicar."
+            exit 0
+          fi
           git config user.name  "noticias-bot"
           git config user.email "noticias-bot@users.noreply.github.com"
 
@@ -65,5 +95,5 @@ jobs:
           ls -1 site_pages/noticias_*.html 2>/dev/null | sort | head -n -40 | xargs -r rm -f
 
           git -C site_pages add -f -A
-          git -C site_pages commit -m "briefing $(date -u +%F)" || { echo "sin cambios"; exit 0; }
+          git -C site_pages commit -m "briefing $(date +%F)" || { echo "sin cambios"; exit 0; }
           git -C site_pages push origin HEAD:pages

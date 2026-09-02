@@ -1086,9 +1086,12 @@ def main() -> None:
     log("=== Noticias Diarias iniciando ===")
 
     if os.environ.get("GITHUB_EVENT_NAME") == "schedule":
+        # Objetivo: 18:30 CLT. GitHub Actions atrasa los cron (a veces >1 h), así que
+        # aceptamos toda la franja 18:00–21:59 CLT y dejamos que el workflow evite el
+        # doble envío (chequea si el briefing de hoy ya se publicó en la rama `pages`).
         clt_hour = now_chile().hour
-        if clt_hour != 18:
-            log(f"[INFO] Cron fuera de ventana (hora CLT: {clt_hour}h) — se omite.")
+        if not (18 <= clt_hour <= 21):
+            log(f"[INFO] Fuera de la franja 18–21 CLT (hora actual: {clt_hour}h) — se omite.")
             sys.exit(0)
 
     log("Obteniendo dólar de cierre…")
