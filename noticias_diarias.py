@@ -458,7 +458,7 @@ def _call_gemini(system: str, user: str) -> str:
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": {
             "temperature": 0.35,
-            "maxOutputTokens": 20000,
+            "maxOutputTokens": 12000,
             "responseMimeType": "application/json",
         },
     }
@@ -474,7 +474,7 @@ def _call_gemini(system: str, user: str) -> str:
             try:
                 r = requests.post(url, headers={"x-goog-api-key": GEMINI_API_KEY,
                                                 "Content-Type": "application/json"},
-                                  json=payload, timeout=45)
+                                  json=payload, timeout=(10, 40))
             except Exception as e:
                 last_err = f"{model}: {e}"
                 continue
@@ -494,10 +494,36 @@ def _call_gemini(system: str, user: str) -> str:
     raise RuntimeError(f"ningún modelo Gemini respondió ({last_err})")
 
 
+_GROQ_PREF = [
+    "llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama3-70b-8192",
+    "openai/gpt-oss-120b", "openai/gpt-oss-20b", "moonshotai/kimi-k2-instruct",
+    "qwen-2.5-32b", "llama-3.1-8b-instant", "llama3-8b-8192",
+]
+
+
+def _groq_models() -> list:
+    """Modelos de chat disponibles ahora en la cuenta Groq, ordenados por preferencia."""
+    env = os.environ.get("GROQ_MODEL", "").strip()
+    if env:
+        return [env]
+    try:
+        r = requests.get("https://api.groq.com/openai/v1/models",
+                         headers={"Authorization": f"Bearer {GROQ_API_KEY}"}, timeout=20)
+        ids = {m["id"] for m in r.json().get("data", []) if m.get("active", True)}
+        ranked = [m for m in _GROQ_PREF if m in ids]
+        extra = sorted(i for i in ids if i not in ranked
+                       and not any(k in i for k in ("whisper", "guard", "tts", "embed", "prompt")))
+        return ranked + extra
+    except Exception as e:
+        log(f"[WARN] No se pudo listar modelos Groq ({e}) — uso lista por defecto.")
+        return _GROQ_PREF
+
+
 def _call_groq(system: str, user: str) -> str:
     """Llama a Groq (OpenAI-compatible, free tier). Devuelve el texto (JSON) o lanza."""
-    model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-    for attempt in range(2):
+    models = _groq_models()
+    last_err = "sin modelos"
+    for model in models[:5]:
         try:
             r = requests.post(
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -509,16 +535,17 @@ def _call_groq(system: str, user: str) -> str:
                                    {"role": "user", "content": user}]},
                 timeout=90)
         except Exception as e:
-            if attempt == 0:
-                time.sleep(8); continue
-            raise RuntimeError(f"Groq: {e}")
-        if r.status_code in (429, 500, 502, 503) and attempt == 0:
-            log(f"[WARN] Groq HTTP {r.status_code} — reintentando…")
-            time.sleep(12); continue
+            last_err = f"{model}: {e}"
+            continue
+        if r.status_code in (400, 404, 429, 500, 502, 503):
+            last_err = f"{model}: HTTP {r.status_code}"
+            log(f"[WARN] Groq {last_err} — probando siguiente modelo…")
+            continue
         if r.status_code != 200:
             raise RuntimeError(f"Groq HTTP {r.status_code}: {r.text[:300]}")
+        log(f"[INFO] Groq modelo: {model}")
         return r.json()["choices"][0]["message"]["content"]
-    raise RuntimeError("Groq no respondió")
+    raise RuntimeError(f"ningún modelo Groq respondió ({last_err})")
 
 
 def _call_anthropic(system: str, user: str) -> str:
@@ -532,14 +559,14 @@ def _call_anthropic(system: str, user: str) -> str:
 def analyze_newsletter(dollar_item: dict, candidates: list, bonus: list):
     """Prueba los proveedores en orden hasta que uno entregue el análisis. None = modo básico."""
     providers = []
-    if GEMINI_API_KEY:
-        providers.append(("Gemini", _call_gemini))
-    if GROQ_API_KEY:
+    if GROQ_API_KEY:                       # Groq primero: free tier estable y rápido
         providers.append(("Groq", _call_groq))
+    if GEMINI_API_KEY:                     # Gemini como alternativa (free tier suele saturarse)
+        providers.append(("Gemini", _call_gemini))
     if ANTHROPIC_API_KEY:
         providers.append(("Anthropic", _call_anthropic))
     if not providers:
-        log("[INFO] Sin GEMINI_API_KEY / GROQ_API_KEY / ANTHROPIC_API_KEY — briefing en modo básico.")
+        log("[INFO] Sin GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY — briefing en modo básico.")
         return None
 
     prompt = _build_prompt(dollar_item, candidates, bonus)
