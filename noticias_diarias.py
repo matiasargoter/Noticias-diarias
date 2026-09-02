@@ -45,6 +45,7 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 RECIPIENT_EMAIL    = os.environ.get("RECIPIENT_EMAIL",    "matiasargoter@gmail.com")
 OUTPUT_DIR         = os.environ.get("OUTPUT_DIR",         "/Users/matiasargote/Desktop/Noticias diarias")
 GEMINI_API_KEY     = os.environ.get("GEMINI_API_KEY",     "")
+GROQ_API_KEY       = os.environ.get("GROQ_API_KEY",       "")
 ANTHROPIC_API_KEY  = os.environ.get("ANTHROPIC_API_KEY",  "")
 AI_MODEL           = os.environ.get("AI_MODEL",           "claude-opus-5")
 DRY_RUN            = os.environ.get("DRY_RUN", "") not in ("", "0", "false", "False")
@@ -446,7 +447,7 @@ def _build_prompt(dollar_item: dict, candidates: list, bonus: list) -> str:
 
 
 GEMINI_MODELS = [m.strip() for m in os.environ.get(
-    "GEMINI_MODEL", "gemini-flash-latest,gemini-3.6-flash,gemini-2.0-flash"
+    "GEMINI_MODEL", "gemini-flash-latest,gemini-3.6-flash"
 ).split(",") if m.strip()]
 
 
@@ -462,17 +463,18 @@ def _call_gemini(system: str, user: str) -> str:
         },
     }
     last_err = "sin intentos"
-    # 2 pasadas por la lista de modelos: la 2ª tras una pausa, para sobrellevar
-    # 404 (modelo movido), 429 (cuota) y 503 (Gemini saturado, muy común en free tier).
+    # 2 pasadas rápidas por la lista de modelos (la 2ª tras una pausa corta). Si Gemini
+    # está saturado (503, común en free tier) se corta rápido y `analyze_newsletter`
+    # pasa al proveedor siguiente (Groq).
     for attempt in range(2):
         if attempt:
-            time.sleep(20)
+            time.sleep(10)
         for model in GEMINI_MODELS:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             try:
                 r = requests.post(url, headers={"x-goog-api-key": GEMINI_API_KEY,
                                                 "Content-Type": "application/json"},
-                                  json=payload, timeout=120)
+                                  json=payload, timeout=45)
             except Exception as e:
                 last_err = f"{model}: {e}"
                 continue
@@ -492,6 +494,33 @@ def _call_gemini(system: str, user: str) -> str:
     raise RuntimeError(f"ningún modelo Gemini respondió ({last_err})")
 
 
+def _call_groq(system: str, user: str) -> str:
+    """Llama a Groq (OpenAI-compatible, free tier). Devuelve el texto (JSON) o lanza."""
+    model = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+    for attempt in range(2):
+        try:
+            r = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}",
+                         "Content-Type": "application/json"},
+                json={"model": model, "temperature": 0.35,
+                      "response_format": {"type": "json_object"},
+                      "messages": [{"role": "system", "content": system},
+                                   {"role": "user", "content": user}]},
+                timeout=90)
+        except Exception as e:
+            if attempt == 0:
+                time.sleep(8); continue
+            raise RuntimeError(f"Groq: {e}")
+        if r.status_code in (429, 500, 502, 503) and attempt == 0:
+            log(f"[WARN] Groq HTTP {r.status_code} — reintentando…")
+            time.sleep(12); continue
+        if r.status_code != 200:
+            raise RuntimeError(f"Groq HTTP {r.status_code}: {r.text[:300]}")
+        return r.json()["choices"][0]["message"]["content"]
+    raise RuntimeError("Groq no respondió")
+
+
 def _call_anthropic(system: str, user: str) -> str:
     import anthropic
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -501,27 +530,31 @@ def _call_anthropic(system: str, user: str) -> str:
 
 
 def analyze_newsletter(dollar_item: dict, candidates: list, bonus: list):
-    """Una llamada al modelo. Devuelve el dict de análisis o None (modo básico)."""
+    """Prueba los proveedores en orden hasta que uno entregue el análisis. None = modo básico."""
+    providers = []
     if GEMINI_API_KEY:
-        provider, call = "Gemini", _call_gemini
-    elif ANTHROPIC_API_KEY:
-        provider, call = "Anthropic", _call_anthropic
-    else:
-        log("[INFO] Sin GEMINI_API_KEY ni ANTHROPIC_API_KEY — briefing en modo básico.")
+        providers.append(("Gemini", _call_gemini))
+    if GROQ_API_KEY:
+        providers.append(("Groq", _call_groq))
+    if ANTHROPIC_API_KEY:
+        providers.append(("Anthropic", _call_anthropic))
+    if not providers:
+        log("[INFO] Sin GEMINI_API_KEY / GROQ_API_KEY / ANTHROPIC_API_KEY — briefing en modo básico.")
         return None
 
     prompt = _build_prompt(dollar_item, candidates, bonus)
-    try:
-        text = call(SYSTEM_ANALISTA, prompt)
-        data = _extract_json(text)
-        n_news = len(data.get("noticias", []))
-        if not data.get("dolar") or n_news == 0:
-            raise ValueError("JSON incompleto (sin dolar/noticias)")
-        log(f"[OK] Análisis con {provider}: {n_news} noticias + dólar + lectura del día.")
-        return data
-    except Exception as e:
-        log(f"[WARN] Falló el análisis IA ({provider}: {e}) — briefing en modo básico.")
-        return None
+    for provider, call in providers:
+        try:
+            data = _extract_json(call(SYSTEM_ANALISTA, prompt))
+            n_news = len(data.get("noticias", []))
+            if not data.get("dolar") or n_news == 0:
+                raise ValueError("JSON incompleto (sin dolar/noticias)")
+            log(f"[OK] Análisis con {provider}: {n_news} noticias + dólar + lectura del día.")
+            return data
+        except Exception as e:
+            log(f"[WARN] {provider} falló ({e}) — probando siguiente proveedor…")
+    log("[WARN] Ningún proveedor de IA respondió — briefing en modo básico.")
+    return None
 
 
 def apply_analysis(dollar_item: dict, candidates: list, bonus: list, analysis: dict):
