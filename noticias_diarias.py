@@ -198,33 +198,40 @@ def get_emol_dollar() -> dict:
         except Exception as e:
             log(f"[WARN] Buscando dólar en {search_url}: {e}")
 
+    def _fmt(v: float) -> str:
+        return f"${v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
     value_str, body = None, ""
-    if art_url:
+    if art_url:                              # 1) valor real desde la nota de cierre de Emol
         body = fetch_article_body(art_url)
-        _, value_str = extract_dollar_value(body)
+        val, _ = extract_dollar_value(body)
+        if val:
+            value_str = _fmt(val)
 
-    if not value_str:
-        for attempt in range(1, 3):
-            try:
-                r = requests.get("https://mindicador.cl/api/dolar", headers=HEADERS, timeout=12)
-                serie = r.json()["serie"][0]
-                val, val_date = serie["valor"], serie["fecha"][:10]
-                value_str = f"${val:,.2f}".replace(",", ".")
-                if val_date != today.strftime("%Y-%m-%d"):
-                    value_str += f" (cierre {val_date})"
-                    log(f"[WARN] Dólar mindicador.cl es de {val_date}, no de hoy")
-                break
-            except Exception as e:
-                log(f"[WARN] mindicador.cl intento {attempt}/2: {e}")
-                if attempt < 2:
-                    time.sleep(4)
+    if not value_str:                        # 2) dólar observado (Chile) vía gael.cloud
+        try:
+            r = requests.get("https://api.gael.cloud/general/public/monedas", headers=HEADERS, timeout=12)
+            usd = next(m for m in r.json() if m.get("Codigo", "").strip() == "USD")
+            value_str = _fmt(float(usd["Valor"].replace(".", "").replace(",", ".")))
+            log("[INFO] Dólar desde api.gael.cloud (dólar observado)")
+        except Exception as e:
+            log(f"[WARN] gael.cloud: {e}")
 
-    if not value_str:   # último recurso: tipo de cambio USD→CLP (sin key)
+    if not value_str:                        # 3) mindicador.cl (BCCh) — suele estar caído
+        try:
+            r = requests.get("https://mindicador.cl/api/dolar", headers=HEADERS, timeout=12)
+            serie = r.json()["serie"][0]
+            value_str = _fmt(serie["valor"])
+            if serie["fecha"][:10] != today.strftime("%Y-%m-%d"):
+                value_str += f" (cierre {serie['fecha'][:10]})"
+        except Exception as e:
+            log(f"[WARN] mindicador.cl: {e}")
+
+    if not value_str:                        # 4) último recurso: USD→CLP referencial
         try:
             r = requests.get("https://open.er-api.com/v6/latest/USD", headers=HEADERS, timeout=12)
-            clp = r.json()["rates"]["CLP"]
-            value_str = f"${clp:,.2f}".replace(",", ".") + " (referencial)"
-            log("[WARN] Dólar desde open.er-api.com (referencial, no cierre Emol/BCCh)")
+            value_str = _fmt(r.json()["rates"]["CLP"]) + " ref."
+            log("[WARN] Dólar desde open.er-api.com (referencial)")
         except Exception as e:
             log(f"[WARN] open.er-api.com: {e}")
 
