@@ -521,30 +521,34 @@ def _groq_models() -> list:
 
 def _call_groq(system: str, user: str) -> str:
     """Llama a Groq (OpenAI-compatible, free tier). Devuelve el texto (JSON) o lanza."""
-    models = _groq_models()
+    models = _groq_models()[:5]
     last_err = "sin modelos"
-    for model in models[:5]:
-        try:
-            r = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {GROQ_API_KEY}",
-                         "Content-Type": "application/json"},
-                json={"model": model, "temperature": 0.35,
-                      "response_format": {"type": "json_object"},
-                      "messages": [{"role": "system", "content": system},
-                                   {"role": "user", "content": user}]},
-                timeout=90)
-        except Exception as e:
-            last_err = f"{model}: {e}"
-            continue
-        if r.status_code in (400, 404, 429, 500, 502, 503):
-            last_err = f"{model}: HTTP {r.status_code}"
-            log(f"[WARN] Groq {last_err} — probando siguiente modelo…")
-            continue
-        if r.status_code != 200:
-            raise RuntimeError(f"Groq HTTP {r.status_code}: {r.text[:300]}")
-        log(f"[INFO] Groq modelo: {model}")
-        return r.json()["choices"][0]["message"]["content"]
+    for attempt in range(2):                 # 2 pasadas: la 2ª tras una pausa corta
+        if attempt:
+            time.sleep(12)
+        for model in models:
+            try:
+                r = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {GROQ_API_KEY}",
+                             "Content-Type": "application/json"},
+                    json={"model": model, "temperature": 0.35,
+                          "response_format": {"type": "json_object"},
+                          "messages": [{"role": "system", "content": system},
+                                       {"role": "user", "content": user}]},
+                    timeout=(10, 75))
+            except Exception as e:
+                last_err = f"{model}: {e}"
+                continue
+            if r.status_code in (400, 404, 429, 500, 502, 503):
+                last_err = f"{model}: HTTP {r.status_code}"
+                log(f"[WARN] Groq {last_err} — probando siguiente modelo…")
+                continue
+            if r.status_code != 200:
+                raise RuntimeError(f"Groq HTTP {r.status_code}: {r.text[:300]}")
+            txt = r.json()["choices"][0]["message"]["content"]
+            log(f"[INFO] Groq modelo: {model} (intento {attempt + 1})")
+            return txt
     raise RuntimeError(f"ningún modelo Groq respondió ({last_err})")
 
 
