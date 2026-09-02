@@ -446,7 +446,8 @@ def _build_prompt(dollar_item: dict, candidates: list, bonus: list) -> str:
 
 
 GEMINI_MODELS = [m.strip() for m in os.environ.get(
-    "GEMINI_MODEL", "gemini-3.6-flash,gemini-flash-latest,gemini-2.0-flash").split(",") if m.strip()]
+    "GEMINI_MODEL", "gemini-flash-latest,gemini-3.6-flash,gemini-2.0-flash"
+).split(",") if m.strip()]
 
 
 def _call_gemini(system: str, user: str) -> str:
@@ -461,27 +462,34 @@ def _call_gemini(system: str, user: str) -> str:
         },
     }
     last_err = "sin intentos"
-    for model in GEMINI_MODELS:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-        try:
-            r = requests.post(url, headers={"x-goog-api-key": GEMINI_API_KEY,
-                                            "Content-Type": "application/json"},
-                              json=payload, timeout=120)
-        except Exception as e:
-            last_err = f"{model}: {e}"
-            continue
-        if r.status_code == 404:
-            last_err = f"{model}: 404 (modelo no disponible)"
-            continue
-        if r.status_code != 200:
-            raise RuntimeError(f"Gemini HTTP {r.status_code} ({model}): {r.text[:300]}")
-        cand = (r.json().get("candidates") or [{}])[0]
-        text = "".join(p.get("text", "") for p in cand.get("content", {}).get("parts", []))
-        if not text:
-            raise RuntimeError(f"Gemini sin texto ({model}, finishReason={cand.get('finishReason')})")
-        log(f"[INFO] Gemini modelo: {model}")
-        return text
-    raise RuntimeError(f"ningún modelo Gemini disponible ({last_err})")
+    # 2 pasadas por la lista de modelos: la 2ª tras una pausa, para sobrellevar
+    # 404 (modelo movido), 429 (cuota) y 503 (Gemini saturado, muy común en free tier).
+    for attempt in range(2):
+        if attempt:
+            time.sleep(20)
+        for model in GEMINI_MODELS:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            try:
+                r = requests.post(url, headers={"x-goog-api-key": GEMINI_API_KEY,
+                                                "Content-Type": "application/json"},
+                                  json=payload, timeout=120)
+            except Exception as e:
+                last_err = f"{model}: {e}"
+                continue
+            if r.status_code in (404, 429, 500, 502, 503):
+                last_err = f"{model}: HTTP {r.status_code}"
+                log(f"[WARN] Gemini {last_err} — probando siguiente modelo…")
+                continue
+            if r.status_code != 200:
+                raise RuntimeError(f"Gemini HTTP {r.status_code} ({model}): {r.text[:300]}")
+            cand = (r.json().get("candidates") or [{}])[0]
+            text = "".join(p.get("text", "") for p in cand.get("content", {}).get("parts", []))
+            if not text:
+                last_err = f"{model}: sin texto (finishReason={cand.get('finishReason')})"
+                continue
+            log(f"[INFO] Gemini modelo: {model} (intento {attempt + 1})")
+            return text
+    raise RuntimeError(f"ningún modelo Gemini respondió ({last_err})")
 
 
 def _call_anthropic(system: str, user: str) -> str:
