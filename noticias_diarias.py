@@ -503,24 +503,41 @@ JSON_SHAPE = """{
 }"""
 
 
-def _build_prompt(dollar_item: dict, candidates: list, bonus: list) -> str:
+SYSTEM_SELECTOR = """Eres editor económico senior de un briefing diario para Chile. Eliges las noticias
+con consecuencias económicas reales (tasas, inflación, dólar, cobre, inversión, crecimiento,
+empleo, finanzas públicas, regulación) por sobre las meramente declarativas. Las de la sección
+Nacional son respaldo: solo si tienen impacto económico directo y superan a una de Economía.
+No repitas un mismo hecho con dos notas. Respondes ÚNICAMENTE con JSON válido."""
+
+
+def _build_select_prompt(candidates: list) -> str:
+    """Paso 1 (liviano): solo titular + bajada de cada candidato, para elegir y ordenar."""
+    lines = [f"Elige y ordena las {TOP_N} noticias más relevantes para la economía chilena "
+             "(no incluyas el dólar/tipo de cambio, va aparte):", ""]
+    for i, c in enumerate(candidates, 1):
+        lines.append(f"[{i}] ({c['category']}) {c['title']} — {first_sentences(c.get('_body') or '', 280)}")
+    lines += ["", f'Devuelve SOLO: {{"ids": [<{TOP_N} números entre corchetes, del más al menos relevante>]}}']
+    return "\n".join(lines)
+
+
+def _build_prompt(dollar_item: dict, candidates: list, bonus: list, selected: list) -> str:
+    """Paso 2: texto completo SOLO de las noticias elegidas (cabe en el límite de Groq free)."""
     lines = [
         f"DÓLAR DE CIERRE (dato ya verificado, va como noticia #1): {dollar_item['dollar_value']}",
         "",
         "NOTAS DEL DÓLAR (Emol Economía — hoy y día hábil anterior):",
-        dollar_item.get("_body") or dollar_item["title"],
+        first_sentences(dollar_item.get("_body") or dollar_item["title"], 3200),
         "",
-        f"CANDIDATOS DE LA SECCIÓN ECONOMÍA DE EMOL — elige y ordena los {TOP_N} más relevantes",
-        "para la economía chilena (campo \"id\" = número entre corchetes; no repitas el tema del",
-        "dólar). Los marcados (Nacional) son respaldo: úsalos solo si tienen impacto económico",
-        "directo y superan a una nota de Economía:",
+        f"NOTICIAS ELEGIDAS DE LA SECCIÓN ECONOMÍA DE EMOL — redacta las {len(selected)}, en este "
+        "mismo orden (campo \"id\" = número entre corchetes):",
         "",
     ]
-    for i, c in enumerate(candidates, 1):
+    for i in selected:
+        c = candidates[i - 1]
         lines.append(f"[{i}] ({c['category']}) {c['title']}")
         body = c.get("_body") or ""
         if body:
-            lines.append(f"    {first_sentences(body, 3000)}")
+            lines.append(f"    {first_sentences(body, 2300)}")
         lines.append("")
 
     if bonus:
@@ -531,10 +548,10 @@ def _build_prompt(dollar_item: dict, candidates: list, bonus: list) -> str:
             lines.append(f"(B{i}) {b['title']}")
             body = b.get("_body") or ""
             if body:
-                lines.append(f"    {first_sentences(body, 2000)}")
+                lines.append(f"    {first_sentences(body, 1300)}")
             lines.append("")
 
-    lines.append(f'"noticias" debe tener exactamente {TOP_N} objetos, del más al menos relevante. '
+    lines.append(f'"noticias" debe tener exactamente {len(selected)} objetos, en el orden dado. '
                  f'Devuelve SOLO este JSON (exactamente esta forma):')
     lines.append(JSON_SHAPE)
     return "\n".join(lines)
@@ -606,16 +623,24 @@ def _groq_models() -> list:
         ids = {m["id"] for m in r.json().get("data", []) if m.get("active", True)}
         ranked = [m for m in _GROQ_PREF if m in ids]
         extra = sorted(i for i in ids if i not in ranked
-                       and not any(k in i for k in ("whisper", "guard", "tts", "embed", "prompt")))
+                       and not any(k in i for k in ("whisper", "guard", "tts", "embed", "prompt",
+                                                    "orpheus", "allam", "compound")))
         return ranked + extra
     except Exception as e:
         log(f"[WARN] No se pudo listar modelos Groq ({e}) — uso lista por defecto.")
         return _GROQ_PREF
 
 
-def _call_groq(system: str, user: str) -> str:
-    """Llama a Groq (OpenAI-compatible, free tier). Devuelve el texto (JSON) o lanza."""
+_GROQ_LIGHT = "openai/gpt-oss-20b"   # paso de selección: otro modelo = otro cupo de tokens/min
+
+
+def _call_groq(system: str, user: str, light: bool = False) -> str:
+    """Llama a Groq (OpenAI-compatible, free tier). Devuelve el texto (JSON) o lanza.
+    light=True (selección) prioriza un modelo distinto al de redacción: el free tier limita
+    los tokens por minuto POR MODELO, así ambos pasos no compiten por el mismo cupo."""
     models = _groq_models()[:5]
+    if light and _GROQ_LIGHT in models:
+        models = [_GROQ_LIGHT] + [m for m in models if m != _GROQ_LIGHT]
     last_err = "sin modelos"
     for attempt in range(2):                 # 2 pasadas: la 2ª tras una pausa corta
         if attempt:
@@ -635,7 +660,7 @@ def _call_groq(system: str, user: str) -> str:
                 last_err = f"{model}: {e}"
                 continue
             if r.status_code in (400, 404, 413, 429, 500, 502, 503):
-                last_err = f"{model}: HTTP {r.status_code} {r.text[:160]}"
+                last_err = f"{model}: HTTP {r.status_code} {r.text[:260]}"
                 log(f"[WARN] Groq {last_err} — probando siguiente modelo…")
                 continue
             if r.status_code != 200:
@@ -654,6 +679,28 @@ def _call_anthropic(system: str, user: str) -> str:
     return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
 
 
+def _select_news(providers: list, candidates: list) -> list:
+    """Paso 1: la IA elige y ordena las TOP_N noticias (ids 1-based). Si falla, orden de Emol."""
+    wanted = min(TOP_N, len(candidates))
+    prompt = _build_select_prompt(candidates)
+    for provider, call in providers:
+        try:
+            raw = call(SYSTEM_SELECTOR, prompt, light=True) if call is _call_groq \
+                else call(SYSTEM_SELECTOR, prompt)
+            ids = []
+            for i in _extract_json(raw).get("ids", []):
+                if isinstance(i, int) and 1 <= i <= len(candidates) and i not in ids:
+                    ids.append(i)
+            if ids:
+                ids += [i for i in range(1, len(candidates) + 1) if i not in ids]
+                log(f"[OK] Selección con {provider}: {ids[:wanted]}")
+                return ids[:wanted]
+        except Exception as e:
+            log(f"[WARN] Selección con {provider} falló ({e}) — probando siguiente…")
+    log("[WARN] Selección por IA no disponible — se usa el orden de Emol.")
+    return list(range(1, wanted + 1))
+
+
 def analyze_newsletter(dollar_item: dict, candidates: list, bonus: list):
     """Prueba los proveedores en orden hasta que uno entregue el análisis. None = modo básico."""
     providers = []
@@ -667,8 +714,9 @@ def analyze_newsletter(dollar_item: dict, candidates: list, bonus: list):
         log("[INFO] Sin GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY — briefing en modo básico.")
         return None
 
-    prompt = _build_prompt(dollar_item, candidates, bonus)
-    wanted = min(TOP_N, len(candidates))
+    selected = _select_news(providers, candidates)
+    prompt = _build_prompt(dollar_item, candidates, bonus, selected)
+    wanted = len(selected)
     # A veces el modelo devuelve menos noticias de las pedidas: se reintenta el mismo
     # proveedor una vez y luego el siguiente, quedándose con el resultado más completo.
     attempts = [p for prov in providers for p in (prov, prov)]
