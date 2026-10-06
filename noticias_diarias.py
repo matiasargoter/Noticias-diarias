@@ -235,18 +235,19 @@ def get_emol_dollar() -> dict:
     def _fmt(v: float) -> str:
         return f"${v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-    value_str, body = None, ""
+    value_str, body, source = None, "", ""
     if art_url:                              # 1) valor real desde la nota de cierre de Emol
         body = fetch_article_body(art_url)
         val, _ = extract_dollar_value(body)
         if val:
-            value_str = _fmt(val)
+            value_str, source = _fmt(val), "cierre"
 
     if not value_str:                        # 2) dólar observado (Chile) vía gael.cloud
         try:
             r = requests.get("https://api.gael.cloud/general/public/monedas", headers=HEADERS, timeout=12)
             usd = next(m for m in r.json() if m.get("Codigo", "").strip() == "USD")
             value_str = _fmt(float(usd["Valor"].replace(".", "").replace(",", ".")))
+            source = "observado"
             log("[INFO] Dólar desde api.gael.cloud (dólar observado)")
         except Exception as e:
             log(f"[WARN] gael.cloud: {e}")
@@ -255,7 +256,7 @@ def get_emol_dollar() -> dict:
         try:
             r = requests.get("https://mindicador.cl/api/dolar", headers=HEADERS, timeout=12)
             serie = r.json()["serie"][0]
-            value_str = _fmt(serie["valor"])
+            value_str, source = _fmt(serie["valor"]), "observado"
             if serie["fecha"][:10] != today.strftime("%Y-%m-%d"):
                 value_str += f" (cierre {serie['fecha'][:10]})"
         except Exception as e:
@@ -264,7 +265,7 @@ def get_emol_dollar() -> dict:
     if not value_str:                        # 4) último recurso: USD→CLP referencial
         try:
             r = requests.get("https://open.er-api.com/v6/latest/USD", headers=HEADERS, timeout=12)
-            value_str = _fmt(r.json()["rates"]["CLP"]) + " ref."
+            value_str, source = _fmt(r.json()["rates"]["CLP"]) + " ref.", "referencial"
             log("[WARN] Dólar desde open.er-api.com (referencial)")
         except Exception as e:
             log(f"[WARN] open.er-api.com: {e}")
@@ -284,11 +285,13 @@ def get_emol_dollar() -> dict:
                 art_url = today_notes[0]["url"]
 
     return {
-        "title":        art_title or f"Dólar cierra en {value_str}",
+        "title":        art_title or (f"Dólar cierra en {value_str}" if source == "cierre"
+                                      else f"Dólar observado: {value_str}"),
         "url":          art_url or "https://www.emol.com/economia/",
         "category":     "Mercado Cambiario",
         "summary":      "",
         "dollar_value": value_str,
+        "dollar_source": source,             # cierre (nota Emol) | observado (BCCh) | referencial
         "is_dollar":    True,
         "_body":        body,
     }
@@ -407,8 +410,8 @@ def get_emol_news() -> list:
     return eco + pol
 
 
-def get_most_viewed_bonus(exclude_urls: set) -> list:
-    """2 artículos más comentados de '+ Comentado en Economía' (API interna de Emol)."""
+def get_most_viewed_bonus(exclude_urls: set, limit: int = 2) -> list:
+    """Artículos más comentados de '+ Comentado en Economía' (API interna de Emol)."""
     import html as html_module
     bonus, seen_urls, seen_titles = [], set(exclude_urls), set()
     try:
@@ -430,7 +433,7 @@ def get_most_viewed_bonus(exclude_urls: set) -> list:
                 "title": title, "url": url, "category": "Economía",
                 "summary": "", "is_dollar": False, "is_bonus": True,
             })
-            if len(bonus) >= 2:
+            if len(bonus) >= limit:
                 break
     except Exception as e:
         log(f"[WARN] Obteniendo '+ Comentado en Economía': {e}")
@@ -465,10 +468,13 @@ El "resumen" de cada noticia:
   3) cierra con una o dos frases de lectura propia: qué significa para Chile en lo económico
      (dólar, tasas, inflación, cobre, inversión, crecimiento, empleo — lo que aplique) y, si
      corresponde, en lo político. Neutral, sin postura partidista.
+- FIDELIDAD: cada cifra debe estar textualmente en la nota correspondiente. No calcules
+  variaciones, no supongas cierres y no mezcles cifras de hechos distintos (si el texto
+  menciona un episodio anterior, atribúyele sus propias cifras y fechas).
 - Prioriza explicar el "por qué" por sobre adjetivar. Evita frases vacías ("es relevante",
   "habrá que estar atentos") y no repitas el titular.
-- DÓLAR: indica el nivel de cierre (usa el valor verificado), la variación del día en pesos
-  si el texto la trae, y los factores que la explican según Emol (cobre, Fed, datos de EE.UU.
+- DÓLAR: indica el nivel y la variación del día tal como los informan las notas de Emol
+  (si solo hay un dato intradía, dilo así, con su hora), y los factores que la explican según Emol (cobre, Fed, datos de EE.UU.
   o Chile, decisiones de Hacienda o del Banco Central, etc.). Retoma lo ocurrido el día hábil
   anterior y su causa para explicar cómo el dólar llegó a este nivel (tendencia de varios días
   si el texto la menciona).
@@ -510,10 +516,13 @@ Nacional son respaldo: solo si tienen impacto económico directo y superan a una
 No repitas un mismo hecho con dos notas. Respondes ÚNICAMENTE con JSON válido."""
 
 
-def _build_select_prompt(candidates: list) -> str:
+def _build_select_prompt(candidates: list, bonus: list) -> str:
     """Paso 1 (liviano): solo titular + bajada de cada candidato, para elegir y ordenar."""
     lines = [f"Elige y ordena las {TOP_N} noticias más relevantes para la economía chilena "
              "(no incluyas el dólar/tipo de cambio, va aparte):", ""]
+    if bonus:
+        lines += ["Estos temas YA van en la sección bonus: no elijas notas sobre el mismo hecho.",
+                  *[f"  - {b['title']}" for b in bonus], ""]
     for i, c in enumerate(candidates, 1):
         lines.append(f"[{i}] ({c['category']}) {c['title']} — {first_sentences(c.get('_body') or '', 280)}")
     lines += ["", f'Devuelve SOLO: {{"ids": [<{TOP_N} números entre corchetes, del más al menos relevante>]}}']
@@ -522,8 +531,16 @@ def _build_select_prompt(candidates: list) -> str:
 
 def _build_prompt(dollar_item: dict, candidates: list, bonus: list, selected: list) -> str:
     """Paso 2: texto completo SOLO de las noticias elegidas (cabe en el límite de Groq free)."""
+    if dollar_item.get("dollar_source") == "cierre":
+        dolar_line = (f"DÓLAR DE CIERRE DE HOY (según la nota de cierre de Emol, va como noticia #1): "
+                      f"{dollar_item['dollar_value']}")
+    else:
+        dolar_line = (f"DÓLAR OBSERVADO (Banco Central, referencia; NO es el cierre de hoy y no sirve "
+                      f"para calcular la variación del día): {dollar_item['dollar_value']}. Va como "
+                      "noticia #1: describe el movimiento del dólar SOLO con lo que dicen las notas "
+                      "de Emol (niveles intradía, variaciones y causas que ellas informan).")
     lines = [
-        f"DÓLAR DE CIERRE (dato ya verificado, va como noticia #1): {dollar_item['dollar_value']}",
+        dolar_line,
         "",
         "NOTAS DEL DÓLAR (Emol Economía — hoy y día hábil anterior):",
         first_sentences(dollar_item.get("_body") or dollar_item["title"], 3200),
@@ -679,10 +696,10 @@ def _call_anthropic(system: str, user: str) -> str:
     return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
 
 
-def _select_news(providers: list, candidates: list) -> list:
+def _select_news(providers: list, candidates: list, bonus: list) -> list:
     """Paso 1: la IA elige y ordena las TOP_N noticias (ids 1-based). Si falla, orden de Emol."""
     wanted = min(TOP_N, len(candidates))
-    prompt = _build_select_prompt(candidates)
+    prompt = _build_select_prompt(candidates, bonus)
     for provider, call in providers:
         try:
             raw = call(SYSTEM_SELECTOR, prompt, light=True) if call is _call_groq \
@@ -714,7 +731,7 @@ def analyze_newsletter(dollar_item: dict, candidates: list, bonus: list):
         log("[INFO] Sin GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY — briefing en modo básico.")
         return None
 
-    selected = _select_news(providers, candidates)
+    selected = _select_news(providers, candidates, bonus)
     prompt = _build_prompt(dollar_item, candidates, bonus, selected)
     wanted = len(selected)
     # A veces el modelo devuelve menos noticias de las pedidas: se reintenta el mismo
@@ -1069,7 +1086,8 @@ def _web_story(art: dict, kind: str = "story") -> str:
     dollar_head = ""
     if art.get("is_dollar"):
         dv = art["dollar_value"]
-        dollar_head = (f'<div class="ticker"><div class="t-lbl">Dólar observado · cierre</div>'
+        lbl = "Dólar · cierre" if art.get("dollar_source") == "cierre" else "Dólar observado · Banco Central"
+        dollar_head = (f'<div class="ticker"><div class="t-lbl">{lbl}</div>'
                        f'<div class="t-val">{dv}</div></div>')
 
     meta = []
@@ -1332,9 +1350,11 @@ def main() -> None:
         c["_body"] = fetch_article_body(c["url"])
 
     exclude = {dollar_item["url"]} | {c["url"] for c in candidates}
-    bonus = get_most_viewed_bonus(exclude)
-    for b in bonus:
+    pool = get_most_viewed_bonus(exclude, limit=6)
+    for b in pool:
         b["_body"] = fetch_article_body(b["url"])
+    # Los especiales/multimedia no traen texto: se saltan para no resumir solo un titular.
+    bonus = ([b for b in pool if len(b["_body"]) > 300] + [b for b in pool if len(b["_body"]) <= 300])[:2]
     log(f"Bonus '+ Comentado': {len(bonus)}")
 
     log("Analizando con IA…")
