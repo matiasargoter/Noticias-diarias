@@ -11,6 +11,11 @@ on:
         description: "programado = disparo automático (respeta franja horaria y anti-doble-envío); manual = envía siempre"
         required: false
         default: manual
+      prueba:
+        description: "Prueba: genera el briefing y muestra los resúmenes en el log, sin enviar correo ni publicar"
+        type: boolean
+        required: false
+        default: false
   # RESPALDO: cron de GitHub por si cron-job.org falla. Chile usa UTC-3 (sep–abr) y
   # UTC-4 (abr–sep): hay un cron por cada offset. El script solo envía dentro de la
   # franja (L-J 18:25–19:00, V 14:55–15:15 CLT); si GitHub llega más tarde, se omite.
@@ -82,11 +87,12 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OUTPUT_DIR: ${{ github.workspace }}/site
+          DRY_RUN: ${{ inputs.prueba && '1' || '' }}
           ORIGEN: ${{ github.event_name == 'schedule' && 'programado' || inputs.origen || 'manual' }}
         run: python "noticias_diarias.py"
 
       - name: Publicar en GitHub Pages (rama pages)
-        if: ${{ steps.gate.outputs.skip != 'true' }}
+        if: ${{ steps.gate.outputs.skip != 'true' && !inputs.prueba }}
         run: |
           set -e
           if ! ls site/*.html >/dev/null 2>&1; then

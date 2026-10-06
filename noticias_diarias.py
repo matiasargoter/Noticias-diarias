@@ -72,6 +72,9 @@ MONTHS_ES = {
 }
 
 MAX_CANDIDATES = 12   # cuántos artículos del día se le pasan a la IA para que elija
+# Buscador interno de Emol (el del sitio): entrega el texto completo de las notas.
+EMOL_SEARCH_API = "https://newsapi.ecn.cl/NewsApi/emol/buscador/emol"
+
 # Franja de envío automático (hora Chile) por día: lunes=0 … viernes=4.
 # Objetivo L-J 18:30, V 15:00; el margen tolera la duración del run y atrasos menores.
 SEND_WINDOWS = {
@@ -129,8 +132,32 @@ def _extract_copete(soup: BeautifulSoup) -> str:
     return ""
 
 
+def _fetch_body_from_search_api(url: str) -> str:
+    """Bajada + texto completo de la nota vía el buscador interno de Emol (por id).
+    El HTML de la nota trae el cuerpo por JavaScript, así que el scraping solo ve la bajada."""
+    m = re.search(r"/(\d{6,})/", url)
+    if not m:
+        return ""
+    try:
+        r = requests.get(EMOL_SEARCH_API, params={"q": f"id:{m.group(1)}", "size": 1},
+                         headers=HEADERS, timeout=12)
+        hits = r.json()["hits"]["hits"]
+    except Exception as e:
+        log(f"[WARN] Buscador Emol (id {m.group(1)}): {e}")
+        return ""
+    if not hits or str(hits[0]["_source"].get("id")) != m.group(1):
+        return ""
+    s = hits[0]["_source"]
+    bajada = " ".join(b.get("texto", "") for b in s.get("bajada") or [] if isinstance(b, dict))
+    return _clean(BeautifulSoup(f"{bajada} {s.get('texto', '')}", "html.parser").get_text(" ", strip=True))
+
+
 def fetch_article_body(url: str, max_chars: int = 3600) -> str:
-    """Descarga el artículo y devuelve copete + primeros párrafos (para la IA)."""
+    """Texto del artículo para la IA: buscador de Emol (texto completo) y, si falla,
+    copete + párrafos del HTML."""
+    body = _fetch_body_from_search_api(url)
+    if len(body) > 300:
+        return body[:max_chars]
     try:
         resp = requests.get(url, headers=HEADERS, timeout=12)
         soup = BeautifulSoup(resp.text, "html.parser")
@@ -245,6 +272,17 @@ def get_emol_dollar() -> dict:
     if not value_str:
         value_str = "No disponible"
 
+    # Contexto para la IA: notas del dólar de hoy y del día hábil anterior (buscador
+    # de Emol), para explicar por qué el dólar está en ese nivel y cómo llegó ahí.
+    notes = get_emol_dollar_notes()
+    if notes:
+        context = "\n\n".join(f"[{n['label']} · {n['when']}] {n['title']}. {n['text']}" for n in notes)
+        body = (f"[NOTA DE CIERRE DE HOY] {body}\n\n{context}" if body else context)
+        if not art_url:
+            today_notes = [n for n in notes if n["is_today"]]
+            if today_notes:
+                art_url = today_notes[0]["url"]
+
     return {
         "title":        art_title or f"Dólar cierra en {value_str}",
         "url":          art_url or "https://www.emol.com/economia/",
@@ -254,6 +292,42 @@ def get_emol_dollar() -> dict:
         "is_dollar":    True,
         "_body":        body,
     }
+
+
+def get_emol_dollar_notes(max_today: int = 2) -> list:
+    """Notas del dólar de Emol Economía (buscador interno de Emol, el mismo del sitio):
+    hasta `max_today` de hoy + la más reciente del día hábil anterior, con texto completo."""
+    try:
+        r = requests.get(EMOL_SEARCH_API, params={"q": "dolar", "size": 15},
+                         headers=HEADERS, timeout=15)
+        hits = r.json()["hits"]["hits"]
+    except Exception as e:
+        log(f"[WARN] Buscador Emol (dólar): {e}")
+        return []
+
+    today = now_chile().strftime("%Y-%m-%d")
+    today_notes, prev_note = [], None
+    for h in sorted(hits, key=lambda x: x["_source"].get("fechaPublicacion", ""), reverse=True):
+        s = h["_source"]
+        url = s.get("permalink", "")
+        title = _clean(BeautifulSoup(s.get("titulo", ""), "html.parser").get_text())
+        temas = {t.get("nombre", "") for t in s.get("temas", [])}
+        if "/noticias/Economia/" not in url or not ("Dólar" in temas or "dólar" in title.lower()):
+            continue
+        fecha = s.get("fechaPublicacion", "")
+        text = _clean(BeautifulSoup(s.get("texto", ""), "html.parser").get_text(" ", strip=True))
+        note = {"title": title, "url": url, "text": first_sentences(text, 2200),
+                "when": fecha[:16].replace("T", " "), "is_today": fecha[:10] == today}
+        if note["is_today"] and len(today_notes) < max_today:
+            note["label"] = "NOTA DE HOY"
+            today_notes.append(note)
+        elif fecha[:10] < today and prev_note is None:
+            note["label"] = "DÍA HÁBIL ANTERIOR"
+            prev_note = note
+    notes = today_notes + ([prev_note] if prev_note else [])
+    log(f"[INFO] Notas del dólar (buscador Emol): {len(today_notes)} de hoy, "
+        f"{1 if prev_note else 0} del día anterior.")
+    return notes
 
 
 def extract_dollar_value(text: str):
@@ -382,17 +456,23 @@ Criterio editorial:
 - Horizonte: "Corto plazo", "Mediano plazo" o "Largo plazo".
 
 El "resumen" de cada noticia:
-- Son 2 a 4 párrafos, separados por un salto de línea doble (\\n\\n). La mayoría 2-3;
-  usa 4 SOLO cuando la noticia tiene profundidad real que lo amerite (cifras, aristas,
-  antecedentes). Nunca más de 4, nunca menos de 2.
-- Párrafos iniciales: cuenta la noticia como periodista experto — qué pasó, quién, las
-  cifras y actores clave mencionados en el texto. Concreto, claro, sin relleno.
-- Párrafo final: TU lectura, como analista, de cómo afecta esto a Chile en lo económico
-  (dólar, tasas, inflación, cobre, inversión, crecimiento, empleo — lo que aplique) y en
-  lo político (qué actor impulsa qué, qué traba o disputa existe). Sé neutral, sin postura
-  partidista. Si algún plano no aplica, no lo menciones.
-- El lector queda completamente informado sin abrir la fuente. Español de Chile, tono sobrio.
-- Nada de markdown, viñetas ni títulos dentro del texto.
+- Es UN SOLO párrafo denso y detallado (aprox. 130 a 200 palabras; el del dólar hasta 230).
+  Sin saltos de línea. Debe dejar al lector completamente informado sin abrir la fuente.
+- No es un titular alargado: explica el TRASFONDO. Cubre, en este orden natural:
+  1) qué pasó, con las cifras, montos, porcentajes y actores concretos que trae el texto;
+  2) POR QUÉ pasó: causas, antecedentes, decisiones o datos previos que lo explican, y el
+     contexto que entrega el artículo (qué venía ocurriendo, qué se discute, qué está en juego);
+  3) cierra con una o dos frases de lectura propia: qué significa para Chile en lo económico
+     (dólar, tasas, inflación, cobre, inversión, crecimiento, empleo — lo que aplique) y, si
+     corresponde, en lo político. Neutral, sin postura partidista.
+- Prioriza explicar el "por qué" por sobre adjetivar. Evita frases vacías ("es relevante",
+  "habrá que estar atentos") y no repitas el titular.
+- DÓLAR: indica el nivel de cierre (usa el valor verificado), la variación del día en pesos
+  si el texto la trae, y los factores que la explican según Emol (cobre, Fed, datos de EE.UU.
+  o Chile, decisiones de Hacienda o del Banco Central, etc.). Retoma lo ocurrido el día hábil
+  anterior y su causa para explicar cómo el dólar llegó a este nivel (tendencia de varios días
+  si el texto la menciona).
+- Español de Chile, tono sobrio. Nada de markdown, viñetas ni títulos dentro del texto.
 
 Respondes ÚNICAMENTE con un objeto JSON válido, sin texto antes ni después, sin fences."""
 
@@ -400,7 +480,7 @@ JSON_SHAPE = """{
   "resumen_ejecutivo": "3 a 5 frases: la lectura del día para Chile, hilando lo más importante.",
   "dolar": {
     "titular": "titular breve del cierre cambiario",
-    "resumen": "2-4 párrafos (\\n\\n entre ellos) según las reglas: qué pasó con el peso/dólar y tu lectura económica y política.",
+    "resumen": "un párrafo denso según las reglas: cierre, variación, por qué (factores de hoy y del día hábil anterior) y lectura para Chile.",
     "relevancia": "Baja|Media|Alta|Crítica",
     "horizonte": "Corto plazo|Mediano plazo|Largo plazo"
   },
@@ -408,7 +488,7 @@ JSON_SHAPE = """{
     {
       "id": <número del candidato entre corchetes>,
       "titular": "titular breve y descriptivo",
-      "resumen": "2-4 párrafos (\\n\\n entre ellos) según las reglas: la noticia + tu lectura económica y política para Chile. 4 solo si lo amerita.",
+      "resumen": "un párrafo denso según las reglas: qué pasó con cifras, por qué (causas y antecedentes) y lectura para Chile.",
       "relevancia": "Baja|Media|Alta|Crítica",
       "horizonte": "Corto plazo|Mediano plazo|Largo plazo"
     }
@@ -416,7 +496,7 @@ JSON_SHAPE = """{
   "bonus": [
     {
       "titular": "titular breve",
-      "resumen": "2-3 párrafos (\\n\\n entre ellos): el tema, por qué genera debate y tu lectura de sus implicancias.",
+      "resumen": "un párrafo denso (100-160 palabras): el tema con sus cifras, el trasfondo, por qué genera debate y sus implicancias.",
       "relevancia": "Baja|Media|Alta|Crítica"
     }
   ]
@@ -427,7 +507,7 @@ def _build_prompt(dollar_item: dict, candidates: list, bonus: list) -> str:
     lines = [
         f"DÓLAR DE CIERRE (dato ya verificado, va como noticia #1): {dollar_item['dollar_value']}",
         "",
-        "ARTÍCULO DEL DÓLAR (Emol Economía):",
+        "NOTAS DEL DÓLAR (Emol Economía — hoy y día hábil anterior):",
         dollar_item.get("_body") or dollar_item["title"],
         "",
         f"CANDIDATOS DE LA SECCIÓN ECONOMÍA DE EMOL — elige y ordena los {TOP_N} más relevantes",
@@ -440,7 +520,7 @@ def _build_prompt(dollar_item: dict, candidates: list, bonus: list) -> str:
         lines.append(f"[{i}] ({c['category']}) {c['title']}")
         body = c.get("_body") or ""
         if body:
-            lines.append(f"    {first_sentences(body, 1700)}")
+            lines.append(f"    {first_sentences(body, 3000)}")
         lines.append("")
 
     if bonus:
@@ -451,7 +531,7 @@ def _build_prompt(dollar_item: dict, candidates: list, bonus: list) -> str:
             lines.append(f"(B{i}) {b['title']}")
             body = b.get("_body") or ""
             if body:
-                lines.append(f"    {first_sentences(body, 1200)}")
+                lines.append(f"    {first_sentences(body, 2000)}")
             lines.append("")
 
     lines.append(f'"noticias" debe tener exactamente {TOP_N} objetos, del más al menos relevante. '
@@ -554,8 +634,8 @@ def _call_groq(system: str, user: str) -> str:
             except Exception as e:
                 last_err = f"{model}: {e}"
                 continue
-            if r.status_code in (400, 404, 429, 500, 502, 503):
-                last_err = f"{model}: HTTP {r.status_code}"
+            if r.status_code in (400, 404, 413, 429, 500, 502, 503):
+                last_err = f"{model}: HTTP {r.status_code} {r.text[:160]}"
                 log(f"[WARN] Groq {last_err} — probando siguiente modelo…")
                 continue
             if r.status_code != 200:
@@ -1254,6 +1334,10 @@ def main() -> None:
     text_body = "\n".join(text_lines)
 
     if DRY_RUN:
+        for it in [dollar_item] + top + bonus:   # para revisar la redacción en el log
+            an = it.get("analysis") or {}
+            texto = an.get("resumen") or it.get("summary", "")
+            log(f"[DRY_RUN] {an.get('titular') or it['title']} ({len(texto.split())} palabras)\n{texto}\n")
         log(f"[DRY_RUN] No se envía email. Abre: open \"{html_path}\"")
     else:
         log("Enviando email vía Gmail SMTP…")
