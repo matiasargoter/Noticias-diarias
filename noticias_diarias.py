@@ -581,16 +581,28 @@ def analyze_newsletter(dollar_item: dict, candidates: list, bonus: list):
         return None
 
     prompt = _build_prompt(dollar_item, candidates, bonus)
-    for provider, call in providers:
+    wanted = min(TOP_N, len(candidates))
+    # A veces el modelo devuelve menos noticias de las pedidas: se reintenta el mismo
+    # proveedor una vez y luego el siguiente, quedándose con el resultado más completo.
+    attempts = [p for prov in providers for p in (prov, prov)]
+    best, best_n = None, 0
+    for provider, call in attempts:
         try:
             data = _extract_json(call(SYSTEM_ANALISTA, prompt))
             n_news = len(data.get("noticias", []))
             if not data.get("dolar") or n_news == 0:
                 raise ValueError("JSON incompleto (sin dolar/noticias)")
-            log(f"[OK] Análisis con {provider}: {n_news} noticias + dólar + lectura del día.")
-            return data
+            if n_news > best_n:
+                best, best_n = data, n_news
+            if n_news >= wanted:
+                log(f"[OK] Análisis con {provider}: {n_news} noticias + dólar + lectura del día.")
+                return data
+            log(f"[WARN] {provider} devolvió {n_news}/{wanted} noticias — reintentando…")
         except Exception as e:
             log(f"[WARN] {provider} falló ({e}) — probando siguiente proveedor…")
+    if best:
+        log(f"[WARN] Mejor análisis disponible: {best_n}/{wanted} noticias (el resto con copete).")
+        return best
     log("[WARN] Ningún proveedor de IA respondió — briefing en modo básico.")
     return None
 
