@@ -498,7 +498,10 @@ JSON_SHAPE = """{
       "relevancia": "Baja|Media|Alta|Crítica",
       "horizonte": "Corto plazo|Mediano plazo|Largo plazo"
     }
-  ],
+  ]
+}"""
+
+BONUS_SHAPE = """{
   "bonus": [
     {
       "titular": "titular breve",
@@ -529,7 +532,22 @@ def _build_select_prompt(candidates: list, bonus: list) -> str:
     return "\n".join(lines)
 
 
-def _build_prompt(dollar_item: dict, candidates: list, bonus: list, selected: list) -> str:
+def _build_bonus_prompt(bonus: list) -> str:
+    """Paso 3 (aparte, modelo liviano): los bonus de '+ Comentado en Economía'."""
+    lines = [f"NOTAS BONUS — sección '+ Comentado en Economía' de Emol. Analízalas en este mismo "
+             f"orden y devuelve exactamente {len(bonus)} objetos en \"bonus\", sin reordenar:", ""]
+    for i, b in enumerate(bonus, 1):
+        lines.append(f"(B{i}) {b['title']}")
+        body = b.get("_body") or ""
+        if body:
+            lines.append(f"    {first_sentences(body, 1800)}")
+        lines.append("")
+    lines.append("Devuelve SOLO este JSON (exactamente esta forma):")
+    lines.append(BONUS_SHAPE)
+    return "\n".join(lines)
+
+
+def _build_prompt(dollar_item: dict, candidates: list, selected: list) -> str:
     """Paso 2: texto completo SOLO de las noticias elegidas (cabe en el límite de Groq free)."""
     if dollar_item.get("dollar_source") == "cierre":
         dolar_line = (f"DÓLAR DE CIERRE DE HOY (según la nota de cierre de Emol, va como noticia #1): "
@@ -556,17 +574,6 @@ def _build_prompt(dollar_item: dict, candidates: list, bonus: list, selected: li
         if body:
             lines.append(f"    {first_sentences(body, 2300)}")
         lines.append("")
-
-    if bonus:
-        lines.append("CANDIDATOS BONUS — sección '+ Comentado en Economía'. Analízalos en este mismo "
-                     f"orden, devuelve exactamente {len(bonus)} objetos en \"bonus\", no los reordenes:")
-        lines.append("")
-        for i, b in enumerate(bonus, 1):
-            lines.append(f"(B{i}) {b['title']}")
-            body = b.get("_body") or ""
-            if body:
-                lines.append(f"    {first_sentences(body, 1300)}")
-            lines.append("")
 
     lines.append(f'"noticias" debe tener exactamente {len(selected)} objetos, en el orden dado. '
                  f'Devuelve SOLO este JSON (exactamente esta forma):')
@@ -718,6 +725,29 @@ def _select_news(providers: list, candidates: list, bonus: list) -> list:
     return list(range(1, wanted + 1))
 
 
+def _analyze_bonus(providers: list, bonus: list) -> list:
+    """Paso 3: análisis de los bonus en una consulta aparte (modelo liviano en Groq).
+    Si falla, devuelve lo mejor obtenido; los bonus sin análisis van con su bajada."""
+    if not bonus:
+        return []
+    prompt = _build_bonus_prompt(bonus)
+    best = []
+    for provider, call in [p for prov in providers for p in (prov, prov)]:
+        try:
+            raw = call(SYSTEM_ANALISTA, prompt, light=True) if call is _call_groq \
+                else call(SYSTEM_ANALISTA, prompt)
+            got = [b for b in _extract_json(raw).get("bonus", []) if isinstance(b, dict) and b.get("resumen")]
+            if len(got) > len(best):
+                best = got
+            if len(got) >= len(bonus):
+                log(f"[OK] Bonus con {provider}: {len(got)}.")
+                return got
+            log(f"[WARN] {provider} devolvió {len(got)}/{len(bonus)} bonus — reintentando…")
+        except Exception as e:
+            log(f"[WARN] Bonus con {provider} falló ({e}) — probando siguiente…")
+    return best
+
+
 def analyze_newsletter(dollar_item: dict, candidates: list, bonus: list):
     """Prueba los proveedores en orden hasta que uno entregue el análisis. None = modo básico."""
     providers = []
@@ -732,30 +762,30 @@ def analyze_newsletter(dollar_item: dict, candidates: list, bonus: list):
         return None
 
     selected = _select_news(providers, candidates, bonus)
-    prompt = _build_prompt(dollar_item, candidates, bonus, selected)
+    prompt = _build_prompt(dollar_item, candidates, selected)
     wanted = len(selected)
-    # A veces el modelo devuelve menos noticias (o bonus) de los pedidos: se reintenta el
-    # mismo proveedor una vez y luego el siguiente, quedándose con el resultado más completo.
+    # A veces el modelo devuelve menos noticias de las pedidas: se reintenta el mismo
+    # proveedor una vez y luego el siguiente, quedándose con el resultado más completo.
     attempts = [p for prov in providers for p in (prov, prov)]
-    best, best_score = None, (0, 0)
+    best, best_n = None, 0
     for provider, call in attempts:
         try:
             data = _extract_json(call(SYSTEM_ANALISTA, prompt))
             n_news = len(data.get("noticias", []))
-            n_bonus = sum(1 for b in data.get("bonus", []) if isinstance(b, dict) and b.get("resumen"))
             if not data.get("dolar") or n_news == 0:
                 raise ValueError("JSON incompleto (sin dolar/noticias)")
-            if (n_news, n_bonus) > best_score:
-                best, best_score = data, (n_news, n_bonus)
-            if n_news >= wanted and n_bonus >= len(bonus):
-                log(f"[OK] Análisis con {provider}: {n_news} noticias + {n_bonus} bonus + dólar + lectura del día.")
-                return data
-            log(f"[WARN] {provider} devolvió {n_news}/{wanted} noticias y {n_bonus}/{len(bonus)} bonus — reintentando…")
+            if n_news > best_n:
+                best, best_n = data, n_news
+            if n_news >= wanted:
+                log(f"[OK] Análisis con {provider}: {n_news} noticias + dólar + lectura del día.")
+                break
+            log(f"[WARN] {provider} devolvió {n_news}/{wanted} noticias — reintentando…")
         except Exception as e:
             log(f"[WARN] {provider} falló ({e}) — probando siguiente proveedor…")
     if best:
-        log(f"[WARN] Mejor análisis disponible: {best_score[0]}/{wanted} noticias, "
-            f"{best_score[1]}/{len(bonus)} bonus (el resto con copete).")
+        if best_n < wanted:
+            log(f"[WARN] Mejor análisis disponible: {best_n}/{wanted} noticias (el resto con copete).")
+        best["bonus"] = _analyze_bonus(providers, bonus)
         return best
     log("[WARN] Ningún proveedor de IA respondió — briefing en modo básico.")
     return None
