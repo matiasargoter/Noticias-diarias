@@ -3,11 +3,14 @@ name: Noticias Diarias Chile
 on:
   schedule:
     # Chile usa UTC-4 (abr–sep) y UTC-3 en horario de verano (sep–abr).
-    # Cada cron apunta a 18:30 CLT en una de las dos épocas; el otro queda 1 h
-    # corrido. El guard del script (franja 18–21 CLT) + el chequeo "ya publicado
-    # hoy" de este workflow evitan el doble envío y toleran los atrasos de GitHub.
-    - cron: '30 22 * * 1-5'   # 22:30 UTC = 18:30 CLT con UTC-4
-    - cron: '30 21 * * 1-5'   # 21:30 UTC = 18:30 CLT con UTC-3
+    # Varios intentos desde 18:30 CLT: GitHub atrasa los cron 1–4 h, así que más
+    # disparos (en minutos no redondos, para evitar la congestión de :00/:30)
+    # suben la probabilidad de uno temprano. El guard del script (franja 18–23 CLT) +
+    # el chequeo "ya publicado hoy" de este workflow evitan el doble envío.
+    - cron: '33 21 * * 1-5'   # 18:33 CLT (UTC-3) / 17:33 CLT (UTC-4, el guard lo omite)
+    - cron: '3 22 * * 1-5'
+    - cron: '33 22 * * 1-5'
+    - cron: '3 23 * * 1-5'
   workflow_dispatch:
 
 permissions:
