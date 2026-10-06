@@ -470,7 +470,10 @@ El "resumen" de cada noticia:
      corresponde, en lo político. Neutral, sin postura partidista.
 - FIDELIDAD: cada cifra debe estar textualmente en la nota correspondiente. No calcules
   variaciones, no supongas cierres y no mezcles cifras de hechos distintos (si el texto
-  menciona un episodio anterior, atribúyele sus propias cifras y fechas).
+  menciona un episodio anterior, atribúyele sus propias cifras y fechas). Ejemplo de error
+  a evitar: si el texto dice "en mayo se detectaron 27 mil toneladas en 2025" y "ahora se
+  investiga 2024-2025", NO escribas "27 mil toneladas en 2024-2025". Antes de responder,
+  revisa cada cifra: ¿a qué hecho y período la asigna el texto?
 - Prioriza explicar el "por qué" por sobre adjetivar. Evita frases vacías ("es relevante",
   "habrá que estar atentos") y no repitas el titular.
 - DÓLAR: indica el nivel y la variación del día tal como los informan las notas de Emol
@@ -592,7 +595,7 @@ def _call_gemini(system: str, user: str) -> str:
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": user}]}],
         "generationConfig": {
-            "temperature": 0.35,
+            "temperature": 0.2,
             "maxOutputTokens": 12000,
             "responseMimeType": "application/json",
         },
@@ -675,7 +678,7 @@ def _call_groq(system: str, user: str, light: bool = False) -> str:
                     "https://api.groq.com/openai/v1/chat/completions",
                     headers={"Authorization": f"Bearer {GROQ_API_KEY}",
                              "Content-Type": "application/json"},
-                    json={"model": model, "temperature": 0.35,
+                    json={"model": model, "temperature": 0.2,
                           "response_format": {"type": "json_object"},
                           "messages": [{"role": "system", "content": system},
                                        {"role": "user", "content": user}]},
@@ -703,9 +706,30 @@ def _call_anthropic(system: str, user: str) -> str:
     return "".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
 
 
+_KW_STOP = set("sobre entre desde hasta para porque según donde cuando millones gobierno chile "
+               "chilena chileno este esta estos estas tiene tienen había habría además durante "
+               "luego".split())
+
+
+def _keywords(item: dict) -> set:
+    text = (item["title"] + " " + first_sentences(item.get("_body", ""), 300)).lower()
+    return {w for w in re.findall(r"[a-záéíóúñ0-9$]{5,}", text) if w not in _KW_STOP}
+
+
+def _same_topic(a: dict, b: dict) -> bool:
+    """Heurística: 3+ palabras significativas en común (titular + bajada) = mismo hecho."""
+    return len(_keywords(a) & _keywords(b)) >= 3
+
+
 def _select_news(providers: list, candidates: list, bonus: list) -> list:
-    """Paso 1: la IA elige y ordena las TOP_N noticias (ids 1-based). Si falla, orden de Emol."""
+    """Paso 1: la IA elige y ordena las TOP_N noticias (ids 1-based). Si falla, orden de Emol.
+    Se descartan las que repiten el hecho de un bonus (la IA a veces lo ignora)."""
     wanted = min(TOP_N, len(candidates))
+    dup = {i for i, c in enumerate(candidates, 1) if any(_same_topic(c, b) for b in bonus)}
+    if dup and len(candidates) - len(dup) >= wanted:
+        log(f"[INFO] Candidatos que repiten un bonus (se omiten): {sorted(dup)}")
+    else:
+        dup = set()
     prompt = _build_select_prompt(candidates, bonus)
     for provider, call in providers:
         try:
@@ -717,12 +741,13 @@ def _select_news(providers: list, candidates: list, bonus: list) -> list:
                     ids.append(i)
             if ids:
                 ids += [i for i in range(1, len(candidates) + 1) if i not in ids]
+                ids = [i for i in ids if i not in dup]
                 log(f"[OK] Selección con {provider}: {ids[:wanted]}")
                 return ids[:wanted]
         except Exception as e:
             log(f"[WARN] Selección con {provider} falló ({e}) — probando siguiente…")
     log("[WARN] Selección por IA no disponible — se usa el orden de Emol.")
-    return list(range(1, wanted + 1))
+    return [i for i in range(1, len(candidates) + 1) if i not in dup][:wanted]
 
 
 def _analyze_bonus(providers: list, bonus: list) -> list:
