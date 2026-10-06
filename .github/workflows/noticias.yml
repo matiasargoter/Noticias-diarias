@@ -1,17 +1,24 @@
 name: Noticias Diarias Chile
 
 on:
-  schedule:
-    # Chile usa UTC-4 (abr–sep) y UTC-3 en horario de verano (sep–abr).
-    # Varios intentos desde 18:30 CLT: GitHub atrasa los cron 1–4 h, así que más
-    # disparos (en minutos no redondos, para evitar la congestión de :00/:30)
-    # suben la probabilidad de uno temprano. El guard del script (franja 18–23 CLT) +
-    # el chequeo "ya publicado hoy" de este workflow evitan el doble envío.
-    - cron: '33 21 * * 1-5'   # 18:33 CLT (UTC-3) / 17:33 CLT (UTC-4, el guard lo omite)
-    - cron: '3 22 * * 1-5'
-    - cron: '33 22 * * 1-5'
-    - cron: '3 23 * * 1-5'
+  # HORARIO: lunes a jueves 18:30 CLT, viernes 15:00 CLT.
+  # Disparo PRINCIPAL: cron-job.org llama a la API de GitHub (workflow_dispatch con
+  # origen=programado) a la hora exacta, en zona America/Santiago (maneja el cambio
+  # de horario). GitHub Actions atrasa sus cron 1–4 h, por eso no son el principal.
   workflow_dispatch:
+    inputs:
+      origen:
+        description: "programado = disparo automático (respeta franja horaria y anti-doble-envío); manual = envía siempre"
+        required: false
+        default: manual
+  # RESPALDO: cron de GitHub por si cron-job.org falla. Chile usa UTC-3 (sep–abr) y
+  # UTC-4 (abr–sep): hay un cron por cada offset. El script solo envía dentro de la
+  # franja (L-J 18:25–19:00, V 14:55–15:15 CLT); si GitHub llega más tarde, se omite.
+  schedule:
+    - cron: '30 21 * * 1-4'   # L-J 18:30 CLT (UTC-3)
+    - cron: '30 22 * * 1-4'   # L-J 18:30 CLT (UTC-4)
+    - cron: '0 18 * * 5'      # V 15:00 CLT (UTC-3)
+    - cron: '0 19 * * 5'      # V 15:00 CLT (UTC-4)
 
 permissions:
   contents: write   # para publicar el HTML en la rama `pages`
@@ -35,6 +42,8 @@ jobs:
 
       - name: ¿El briefing de hoy ya se publicó?
         id: gate
+        env:
+          ORIGEN: ${{ github.event_name == 'schedule' && 'programado' || inputs.origen || 'manual' }}
         run: |
           HOY=$(date +%F)
           echo "hoy=$HOY" >> "$GITHUB_OUTPUT"
@@ -46,22 +55,26 @@ jobs:
             fi
           fi
           echo "already=$ALREADY" >> "$GITHUB_OUTPUT"
-          if [ "$ALREADY" = "true" ] && [ "${{ github.event_name }}" = "schedule" ]; then
-            echo "::notice::El briefing de $HOY ya está publicado — se omite esta corrida programada."
+          # Corridas automáticas (cron de GitHub o cron-job.org) no reenvían si ya salió hoy.
+          SKIP=false
+          if [ "$ALREADY" = "true" ] && [ "$ORIGEN" != "manual" ]; then
+            SKIP=true
+            echo "::notice::El briefing de $HOY ya está publicado — se omite esta corrida automática."
           fi
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
 
       - name: Instalar Python 3.11
-        if: ${{ github.event_name != 'schedule' || steps.gate.outputs.already != 'true' }}
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Instalar dependencias
-        if: ${{ github.event_name != 'schedule' || steps.gate.outputs.already != 'true' }}
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         run: pip install requests beautifulsoup4
 
       - name: Ejecutar script (scrape + análisis IA + email)
-        if: ${{ github.event_name != 'schedule' || steps.gate.outputs.already != 'true' }}
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
@@ -69,10 +82,11 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OUTPUT_DIR: ${{ github.workspace }}/site
+          ORIGEN: ${{ github.event_name == 'schedule' && 'programado' || inputs.origen || 'manual' }}
         run: python "noticias_diarias.py"
 
       - name: Publicar en GitHub Pages (rama pages)
-        if: ${{ github.event_name != 'schedule' || steps.gate.outputs.already != 'true' }}
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         run: |
           set -e
           if ! ls site/*.html >/dev/null 2>&1; then
