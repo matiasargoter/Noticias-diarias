@@ -734,26 +734,28 @@ def analyze_newsletter(dollar_item: dict, candidates: list, bonus: list):
     selected = _select_news(providers, candidates, bonus)
     prompt = _build_prompt(dollar_item, candidates, bonus, selected)
     wanted = len(selected)
-    # A veces el modelo devuelve menos noticias de las pedidas: se reintenta el mismo
-    # proveedor una vez y luego el siguiente, quedándose con el resultado más completo.
+    # A veces el modelo devuelve menos noticias (o bonus) de los pedidos: se reintenta el
+    # mismo proveedor una vez y luego el siguiente, quedándose con el resultado más completo.
     attempts = [p for prov in providers for p in (prov, prov)]
-    best, best_n = None, 0
+    best, best_score = None, (0, 0)
     for provider, call in attempts:
         try:
             data = _extract_json(call(SYSTEM_ANALISTA, prompt))
             n_news = len(data.get("noticias", []))
+            n_bonus = sum(1 for b in data.get("bonus", []) if isinstance(b, dict) and b.get("resumen"))
             if not data.get("dolar") or n_news == 0:
                 raise ValueError("JSON incompleto (sin dolar/noticias)")
-            if n_news > best_n:
-                best, best_n = data, n_news
-            if n_news >= wanted:
-                log(f"[OK] Análisis con {provider}: {n_news} noticias + dólar + lectura del día.")
+            if (n_news, n_bonus) > best_score:
+                best, best_score = data, (n_news, n_bonus)
+            if n_news >= wanted and n_bonus >= len(bonus):
+                log(f"[OK] Análisis con {provider}: {n_news} noticias + {n_bonus} bonus + dólar + lectura del día.")
                 return data
-            log(f"[WARN] {provider} devolvió {n_news}/{wanted} noticias — reintentando…")
+            log(f"[WARN] {provider} devolvió {n_news}/{wanted} noticias y {n_bonus}/{len(bonus)} bonus — reintentando…")
         except Exception as e:
             log(f"[WARN] {provider} falló ({e}) — probando siguiente proveedor…")
     if best:
-        log(f"[WARN] Mejor análisis disponible: {best_n}/{wanted} noticias (el resto con copete).")
+        log(f"[WARN] Mejor análisis disponible: {best_score[0]}/{wanted} noticias, "
+            f"{best_score[1]}/{len(bonus)} bonus (el resto con copete).")
         return best
     log("[WARN] Ningún proveedor de IA respondió — briefing en modo básico.")
     return None
