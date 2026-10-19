@@ -533,6 +533,8 @@ El "resumen" de cada noticia:
   a evitar: si el texto dice "en mayo se detectaron 27 mil toneladas en 2025" y "ahora se
   investiga 2024-2025", NO escribas "27 mil toneladas en 2024-2025". Antes de responder,
   revisa cada cifra: ¿a qué hecho y período la asigna el texto?
+- No hables de la fuente ni del medio (nada de "según la nota", "la nota proviene de El
+  Mercurio", "Emol informa"): cuenta los hechos directamente.
 - Prioriza explicar el "por qué" por sobre adjetivar. Evita frases vacías ("es relevante",
   "habrá que estar atentos") y no repitas el titular.
 - DÓLAR: indica el nivel y la variación del día tal como los informan las notas de Emol
