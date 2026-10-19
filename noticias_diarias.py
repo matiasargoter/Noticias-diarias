@@ -76,11 +76,14 @@ MAX_CANDIDATES = 12   # cuántos artículos del día se le pasan a la IA para qu
 EMOL_SEARCH_API = "https://newsapi.ecn.cl/NewsApi/emol/buscador/emol"
 
 # Franja de envío automático (hora Chile) por día: lunes=0 … viernes=4.
-# Objetivo L-J 18:30, V 15:00; el margen tolera la duración del run y atrasos menores.
+# Objetivo L-J 19:00, V 15:00. (desde, hasta_puntual, hasta_respaldo):
+#  · disparo puntual (cron-job.org, origen=programado): solo hasta `hasta_puntual`.
+#  · respaldo (cron de GitHub, que llega con 1–4 h de atraso): hasta `hasta_respaldo`,
+#    para que el correo salga aunque sea tarde en vez de perderse el día.
 SEND_WINDOWS = {
-    0: ("18:25", "19:00"), 1: ("18:25", "19:00"),
-    2: ("18:25", "19:00"), 3: ("18:25", "19:00"),
-    4: ("14:55", "15:15"),
+    0: ("18:55", "19:30", "23:59"), 1: ("18:55", "19:30", "23:59"),
+    2: ("18:55", "19:30", "23:59"), 3: ("18:55", "19:30", "23:59"),
+    4: ("14:55", "15:30", "20:59"),
 }
 TOP_N          = 4   # noticias de Economía en el cuerpo (el dólar ocupa el #1 → "Top 5")
 MIN_ECO_POOL   = 7    # bajo este umbral se agregan candidatos de Nacional como respaldo
@@ -1391,8 +1394,10 @@ def main() -> None:
         # Corrida automática: solo dentro de la franja del día (el workflow ya evitó
         # el doble envío). Un disparo manual se salta este control.
         ahora = now_chile()
-        franja = SEND_WINDOWS.get(ahora.weekday())
+        dia = SEND_WINDOWS.get(ahora.weekday())
         hhmm = ahora.strftime("%H:%M")
+        respaldo = os.environ.get("GITHUB_EVENT_NAME") == "schedule"
+        franja = (dia[0], dia[2] if respaldo else dia[1]) if dia else None
         if not franja or not (franja[0] <= hhmm <= franja[1]):
             log(f"[INFO] {hhmm} CLT fuera de la franja de envío de hoy ({franja}) — se omite.")
             sys.exit(0)
