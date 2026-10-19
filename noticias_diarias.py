@@ -24,7 +24,7 @@ import json
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import requests
@@ -33,7 +33,14 @@ from bs4 import BeautifulSoup
 CHILE_TZ = ZoneInfo("America/Santiago")
 
 
+# FECHA_EDICION=AAAA-MM-DD arma el briefing de un día pasado (solo pruebas: el workflow
+# no lo publica ni lo marca como enviado).
+FECHA_EDICION = os.environ.get("FECHA_EDICION", "").strip()
+
+
 def now_chile() -> datetime:
+    if FECHA_EDICION:
+        return datetime.strptime(FECHA_EDICION, "%Y-%m-%d").replace(hour=19, tzinfo=CHILE_TZ)
     return datetime.now(CHILE_TZ)
 
 
@@ -245,6 +252,20 @@ def get_emol_dollar() -> dict:
         if val:
             value_str, source = _fmt(val), "cierre"
 
+    notes = get_emol_dollar_notes()
+    if not value_str:                        # 1b) nota de cierre de hoy vía buscador de Emol
+        for n in notes:
+            if n["is_today"] and "cierr" in n["title"].lower():
+                val, _ = extract_dollar_value(n["text"] + " " + n["title"])
+                if val:
+                    value_str, source = _fmt(val), "cierre"
+                    art_url, art_title = art_url or n["url"], art_title or n["title"]
+                    log(f"[INFO] Dólar de cierre desde la nota de Emol: {value_str}")
+                    break
+
+    if not value_str and FECHA_EDICION:      # día pasado: los indicadores de hoy no sirven
+        value_str = "No disponible"
+
     if not value_str:                        # 2) dólar observado (Chile) vía gael.cloud
         try:
             r = requests.get("https://api.gael.cloud/general/public/monedas", headers=HEADERS, timeout=12)
@@ -278,7 +299,6 @@ def get_emol_dollar() -> dict:
 
     # Contexto para la IA: notas del dólar de hoy y del día hábil anterior (buscador
     # de Emol), para explicar por qué el dólar está en ese nivel y cómo llegó ahí.
-    notes = get_emol_dollar_notes()
     if notes:
         context = "\n\n".join(f"[{n['label']} · {n['when']}] {n['title']}. {n['text']}" for n in notes)
         body = (f"[NOTA DE CIERRE DE HOY] {body}\n\n{context}" if body else context)
@@ -304,7 +324,10 @@ def get_emol_dollar_notes(max_today: int = 2) -> list:
     """Notas del dólar de Emol Economía (buscador interno de Emol, el mismo del sitio):
     hasta `max_today` de hoy + la más reciente del día hábil anterior, con texto completo."""
     try:
-        r = requests.get(EMOL_SEARCH_API, params={"q": "dolar", "size": 15},
+        hoy = now_chile()
+        desde = (hoy - timedelta(days=10)).strftime("%Y-%m-%d")
+        q = f"dolar AND fechaPublicacion:[{desde}T00:00:00 TO {hoy:%Y-%m-%d}T23:59:59]"
+        r = requests.get(EMOL_SEARCH_API, params={"q": q, "size": 20},
                          headers=HEADERS, timeout=15)
         hits = r.json()["hits"]["hits"]
     except Exception as e:
@@ -407,10 +430,43 @@ def get_emol_news() -> list:
             }
             (eco if is_economia else pol).append(item)
 
+    for item in get_emol_economy_from_search():   # completa con el buscador de Emol
+        key = item["title"].lower()[:60]
+        if item["url"] in seen_urls or key in seen_titles:
+            continue
+        if any(k in item["title"].lower() for k in dollar_kw):
+            continue
+        seen_urls.add(item["url"])
+        seen_titles.add(key)
+        eco.append(item)
+
     log(f"[INFO] Candidatos: {len(eco)} de Economía, {len(pol)} de Nacional (respaldo).")
     if len(eco) >= MIN_ECO_POOL:
         return eco
     return eco + pol
+
+
+def get_emol_economy_from_search() -> list:
+    """Notas del día de la sección Economía vía buscador de Emol (más recientes primero)."""
+    d = now_chile().strftime("%Y-%m-%d")
+    q = f"seccion:Economía AND fechaPublicacion:[{d}T00:00:00 TO {d}T23:59:59]"
+    try:
+        r = requests.get(EMOL_SEARCH_API, params={"q": q, "size": 40}, headers=HEADERS, timeout=15)
+        hits = r.json()["hits"]["hits"]
+    except Exception as e:
+        log(f"[WARN] Buscador Emol (Economía del día): {e}")
+        return []
+    items = []
+    for h in sorted(hits, key=lambda x: x["_source"].get("fechaPublicacion", ""), reverse=True):
+        src = h["_source"]
+        url = src.get("permalink", "")
+        if "/noticias/Economia/" not in url or not src.get("fechaPublicacion", "").startswith(d):
+            continue
+        title = _clean(BeautifulSoup(src.get("titulo", ""), "html.parser").get_text())
+        if len(title) >= 15:
+            items.append({"title": title, "url": url, "category": "Economía",
+                          "summary": "", "is_dollar": False})
+    return items
 
 
 def get_most_viewed_bonus(exclude_urls: set, limit: int = 2) -> list:
@@ -1452,6 +1508,8 @@ def main() -> None:
         if crit:
             lead = " · " + (crit["analysis"].get("titular") or crit["title"])[:70]
     subject = f"📊 Briefing Chile | {today_str} · Dólar {dollar_item['dollar_value']}{lead}"
+    if FECHA_EDICION:
+        subject = f"[PRUEBA · edición {today_str}] " + subject
 
     text_lines = [subject, ""]
     if exec_summary:

@@ -2,14 +2,14 @@ name: Noticias Diarias Chile
 
 on:
   # HORARIO: lunes a jueves 19:00 CLT, viernes 15:00 CLT.
-  # Los cron de GitHub llegan con 1–4 h de ATRASO pero nunca antes de tiempo. Por eso
-  # hay crons "de espera" varias horas antes: el job arranca temprano y DUERME hasta la
-  # hora exacta (paso "Esperar la hora exacta"). Repo público → minutos gratis.
-  # Opcional: un disparo externo (cron-job.org → workflow_dispatch origen=programado).
+  # Los cron de GitHub llegan con 2–5,5 h de ATRASO (medido sep–oct 2026), pero nunca antes
+  # de tiempo. Por eso los cron "de espera" son de MAÑANA: la corrida arranca temprano y
+  # DUERME hasta 18:59 / 14:59 CLT (jobs espera-1 y espera-2, hasta ~11,5 h en total).
+  # Repo público → minutos de Actions gratis.
   workflow_dispatch:
     inputs:
       origen:
-        description: "programado = disparo automático (respeta franja horaria y anti-doble-envío); manual = envía siempre"
+        description: "programado = respeta franja horaria y anti-doble-envío; manual = envía siempre"
         required: false
         default: manual
       prueba:
@@ -17,16 +17,21 @@ on:
         type: boolean
         required: false
         default: false
-  # RESPALDO: cron de GitHub por si cron-job.org falla. Chile usa UTC-3 (sep–abr) y
-  # UTC-4 (abr–sep): hay crons para ambos offsets. Si el briefing de hoy ya salió, se
-  # omiten; si no, envían aunque lleguen tarde (L-J hasta 23:59, V hasta 20:59 CLT).
+      fecha_edicion:
+        description: "Prueba con un día pasado (AAAA-MM-DD): envía el correo marcado [PRUEBA], sin publicar"
+        required: false
+        default: ""
+      hora_envio:
+        description: "Prueba de la espera (HH:MM hora Chile): duerme hasta esa hora antes de enviar"
+        required: false
+        default: ""
   schedule:
-    # Espera (arrancan antes y duermen hasta 18:59 / 14:59 CLT; dos por si GitHub omite uno).
-    # Chile UTC-3 (sep–abr) / UTC-4 (abr–sep): la espera máxima queda < 6 h (límite del job).
-    - cron: '37 17 * * 1-4'   # L-J ≈14:37 CLT (UTC-3) / 13:37 (UTC-4)
-    - cron: '37 19 * * 1-4'   # L-J ≈16:37 CLT (UTC-3) / 15:37 (UTC-4)
-    - cron: '37 13 * * 5'     # V  ≈10:37 CLT (UTC-3) / 09:37 (UTC-4)
-    - cron: '37 15 * * 5'     # V  ≈12:37 CLT (UTC-3) / 11:37 (UTC-4)
+    # Espera: arrancan de mañana y duermen hasta la hora exacta (dos por si GitHub omite uno).
+    # Chile UTC-3 (sep–abr) / UTC-4 (abr–sep); espera máxima 10 h 22 min (< 11,5 h).
+    - cron: '37 12 * * 1-4'   # L-J ≈09:37 CLT (UTC-3) / 08:37 (UTC-4)
+    - cron: '37 15 * * 1-4'   # L-J ≈12:37 CLT (UTC-3) / 11:37 (UTC-4)
+    - cron: '37 8 * * 5'      # V  ≈05:37 CLT (UTC-3) / 04:37 (UTC-4)
+    - cron: '37 11 * * 5'     # V  ≈08:37 CLT (UTC-3) / 07:37 (UTC-4)
     # Respaldo tardío: si nada salió, envía aunque sea tarde (L-J hasta 23:59, V hasta 20:59).
     - cron: '35 0 * * 2-5'    # L-J ≈21:35 CLT
     - cron: '35 20 * * 5'     # V  ≈17:35 CLT
@@ -46,32 +51,35 @@ env:
   PUBLIC_BASE_URL: https://matiasargoter.github.io/Noticias-diarias
 
 jobs:
-  enviar-noticias:
+  # Dos tramos de espera encadenados: cada job de GitHub tiene un límite de 6 h.
+  espera-1:
+    if: ${{ github.event_name == 'schedule' || inputs.hora_envio != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - name: Esperar la hora de envío (tramo 1)
+        run: .github/scripts/esperar.sh "${{ inputs.hora_envio }}"
+
+  espera-2:
+    needs: espera-1
+    if: ${{ !cancelled() && (github.event_name == 'schedule' || inputs.hora_envio != '') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - name: Esperar la hora de envío (tramo 2)
+        run: .github/scripts/esperar.sh "${{ inputs.hora_envio }}"
+
+  enviar-noticias:
+    needs: [espera-1, espera-2]
+    if: ${{ !cancelled() }}   # corre aunque las esperas se omitan (manual) o fallen
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
-
-      - name: Esperar la hora exacta de envío (solo corridas programadas)
-        if: ${{ github.event_name == 'schedule' || inputs.prueba }}
-        env:
-          SOLO_CALCULAR: ${{ github.event_name != 'schedule' }}   # en prueba: calcula, no duerme
-        run: |
-          case "$(date +%u)" in          # TZ=America/Santiago (env del workflow)
-            1|2|3|4) OBJ="18:59:00" ;;
-            5)       OBJ="14:59:00" ;;
-            *)       echo "Fin de semana — sin envío."; exit 0 ;;
-          esac
-          ESPERA=$(( $(date -d "today $OBJ" +%s) - $(date +%s) ))
-          if [ "$ESPERA" -gt 0 ]; then
-            echo "Ahora $(date +%T) CLT — esperando $((ESPERA / 60)) min hasta las $OBJ CLT…"
-            [ "$SOLO_CALCULAR" = "true" ] && { echo "(prueba: no se duerme)"; exit 0; }
-            sleep "$ESPERA"
-          else
-            echo "Ya pasó la hora objetivo ($OBJ CLT): corrida de respaldo, se continúa."
-          fi
 
       - name: ¿El briefing de hoy ya se publicó?
         id: gate
@@ -116,11 +124,12 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OUTPUT_DIR: ${{ github.workspace }}/site
           DRY_RUN: ${{ inputs.prueba && '1' || '' }}
+          FECHA_EDICION: ${{ inputs.fecha_edicion }}
           ORIGEN: ${{ github.event_name == 'schedule' && 'programado' || inputs.origen || 'manual' }}
         run: python "noticias_diarias.py"
 
       - name: Publicar en GitHub Pages (rama pages)
-        if: ${{ steps.gate.outputs.skip != 'true' && !inputs.prueba }}
+        if: ${{ steps.gate.outputs.skip != 'true' && !inputs.prueba && inputs.fecha_edicion == '' }}
         run: |
           set -e
           if ! ls site/*.html >/dev/null 2>&1; then
