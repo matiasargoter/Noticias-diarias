@@ -26,12 +26,17 @@ on:
         required: false
         default: ""
   schedule:
-    # Espera: arrancan de mañana y duermen hasta la hora exacta (dos por si GitHub omite uno).
+    # Espera: arrancan de mañana y duermen hasta la hora exacta (cuatro por si GitHub omite
+    # alguno; las que llegan mientras otra duerme quedan en cola y el gate las omite).
     # Chile UTC-3 (sep–abr) / UTC-4 (abr–sep); espera máxima 10 h 22 min (< 11,5 h).
     - cron: '37 12 * * 1-4'   # L-J ≈09:37 CLT (UTC-3) / 08:37 (UTC-4)
+    - cron: '7 14 * * 1-4'    # L-J ≈11:07 CLT (UTC-3) / 10:07 (UTC-4)
     - cron: '37 15 * * 1-4'   # L-J ≈12:37 CLT (UTC-3) / 11:37 (UTC-4)
+    - cron: '7 17 * * 1-4'    # L-J ≈14:07 CLT (UTC-3) / 13:07 (UTC-4)
     - cron: '37 8 * * 5'      # V  ≈05:37 CLT (UTC-3) / 04:37 (UTC-4)
+    - cron: '7 10 * * 5'      # V  ≈07:07 CLT (UTC-3) / 06:07 (UTC-4)
     - cron: '37 11 * * 5'     # V  ≈08:37 CLT (UTC-3) / 07:37 (UTC-4)
+    - cron: '7 13 * * 5'      # V  ≈10:07 CLT (UTC-3) / 09:07 (UTC-4)
     # Respaldo tardío: si nada salió, envía aunque sea tarde (L-J hasta 23:59, V hasta 20:59).
     - cron: '35 0 * * 2-5'    # L-J ≈21:35 CLT
     - cron: '35 20 * * 5'     # V  ≈17:35 CLT

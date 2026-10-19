@@ -747,6 +747,24 @@ def _call_groq(system: str, user: str, light: bool = False) -> str:
             except Exception as e:
                 last_err = f"{model}: {e}"
                 continue
+            if r.status_code == 429:         # cupo por minuto agotado: esperar y reintentar
+                m = re.search(r"try again in ([\d.]+)s", r.text)
+                pausa = min(float(m.group(1)) + 2, 65) if m else 30
+                log(f"[WARN] Groq {model}: límite por minuto — espero {pausa:.0f}s y reintento…")
+                time.sleep(pausa)
+                try:
+                    r = requests.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {GROQ_API_KEY}",
+                                 "Content-Type": "application/json"},
+                        json={"model": model, "temperature": 0.2,
+                              "response_format": {"type": "json_object"},
+                              "messages": [{"role": "system", "content": system},
+                                           {"role": "user", "content": user}]},
+                        timeout=(10, 75))
+                except Exception as e:
+                    last_err = f"{model}: {e}"
+                    continue
             if r.status_code in (400, 404, 413, 429, 500, 502, 503):
                 last_err = f"{model}: HTTP {r.status_code} {r.text[:260]}"
                 log(f"[WARN] Groq {last_err} — probando siguiente modelo…")
@@ -1479,6 +1497,12 @@ def main() -> None:
 
     log("Analizando con IA…")
     analysis = analyze_newsletter(dollar_item, candidates, bonus)
+    for intento in (1, 2):   # el modo básico no trae resúmenes: insistir antes de rendirse
+        if analysis:
+            break
+        log(f"[WARN] IA no disponible — nuevo intento completo en 90 s ({intento}/2)…")
+        time.sleep(90)
+        analysis = analyze_newsletter(dollar_item, candidates, bonus)
 
     if analysis:
         top, exec_summary = apply_analysis(dollar_item, candidates, bonus, analysis)
