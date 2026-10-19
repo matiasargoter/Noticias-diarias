@@ -2,9 +2,10 @@ name: Noticias Diarias Chile
 
 on:
   # HORARIO: lunes a jueves 19:00 CLT, viernes 15:00 CLT.
-  # Disparo PRINCIPAL: cron-job.org llama a la API de GitHub (workflow_dispatch con
-  # origen=programado) a la hora exacta, en zona America/Santiago (maneja el cambio
-  # de horario). GitHub Actions atrasa sus cron 1–4 h, por eso no son el principal.
+  # Los cron de GitHub llegan con 1–4 h de ATRASO pero nunca antes de tiempo. Por eso
+  # hay crons "de espera" varias horas antes: el job arranca temprano y DUERME hasta la
+  # hora exacta (paso "Esperar la hora exacta"). Repo público → minutos gratis.
+  # Opcional: un disparo externo (cron-job.org → workflow_dispatch origen=programado).
   workflow_dispatch:
     inputs:
       origen:
@@ -20,18 +21,23 @@ on:
   # UTC-4 (abr–sep): hay crons para ambos offsets. Si el briefing de hoy ya salió, se
   # omiten; si no, envían aunque lleguen tarde (L-J hasta 23:59, V hasta 20:59 CLT).
   schedule:
-    - cron: '5 22 * * 1-4'    # L-J 19:05 CLT (UTC-3)
-    - cron: '5 23 * * 1-4'    # L-J 19:05 CLT (UTC-4) / 20:05 (UTC-3)
-    - cron: '35 0 * * 2-5'    # L-J 21:35 CLT (UTC-3) — día UTC siguiente
-    - cron: '5 18 * * 5'      # V 15:05 CLT (UTC-3)
-    - cron: '5 19 * * 5'      # V 15:05 CLT (UTC-4) / 16:05 (UTC-3)
-    - cron: '35 20 * * 5'     # V 17:35 CLT (UTC-3)
+    # Espera (arrancan antes y duermen hasta 18:59 / 14:59 CLT; dos por si GitHub omite uno).
+    # Chile UTC-3 (sep–abr) / UTC-4 (abr–sep): la espera máxima queda < 6 h (límite del job).
+    - cron: '37 17 * * 1-4'   # L-J ≈14:37 CLT (UTC-3) / 13:37 (UTC-4)
+    - cron: '37 19 * * 1-4'   # L-J ≈16:37 CLT (UTC-3) / 15:37 (UTC-4)
+    - cron: '37 13 * * 5'     # V  ≈10:37 CLT (UTC-3) / 09:37 (UTC-4)
+    - cron: '37 15 * * 5'     # V  ≈12:37 CLT (UTC-3) / 11:37 (UTC-4)
+    # Respaldo tardío: si nada salió, envía aunque sea tarde (L-J hasta 23:59, V hasta 20:59).
+    - cron: '35 0 * * 2-5'    # L-J ≈21:35 CLT
+    - cron: '35 20 * * 5'     # V  ≈17:35 CLT
 
 permissions:
   contents: write   # para publicar el HTML en la rama `pages`
 
 concurrency:
-  group: noticias-diarias
+  # Las corridas programadas se serializan entre sí (una duerme, las demás esperan y luego
+  # el gate las omite); las manuales/pruebas van aparte para no quedar bloqueadas horas.
+  group: noticias-diarias-${{ github.event_name }}
   cancel-in-progress: false
 
 env:
@@ -42,10 +48,30 @@ env:
 jobs:
   enviar-noticias:
     runs-on: ubuntu-latest
+    timeout-minutes: 355
 
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
+
+      - name: Esperar la hora exacta de envío (solo corridas programadas)
+        if: ${{ github.event_name == 'schedule' || inputs.prueba }}
+        env:
+          SOLO_CALCULAR: ${{ github.event_name != 'schedule' }}   # en prueba: calcula, no duerme
+        run: |
+          case "$(date +%u)" in          # TZ=America/Santiago (env del workflow)
+            1|2|3|4) OBJ="18:59:00" ;;
+            5)       OBJ="14:59:00" ;;
+            *)       echo "Fin de semana — sin envío."; exit 0 ;;
+          esac
+          ESPERA=$(( $(date -d "today $OBJ" +%s) - $(date +%s) ))
+          if [ "$ESPERA" -gt 0 ]; then
+            echo "Ahora $(date +%T) CLT — esperando $((ESPERA / 60)) min hasta las $OBJ CLT…"
+            [ "$SOLO_CALCULAR" = "true" ] && { echo "(prueba: no se duerme)"; exit 0; }
+            sleep "$ESPERA"
+          else
+            echo "Ya pasó la hora objetivo ($OBJ CLT): corrida de respaldo, se continúa."
+          fi
 
       - name: ¿El briefing de hoy ya se publicó?
         id: gate
