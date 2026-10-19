@@ -248,6 +248,7 @@ def get_emol_dollar() -> dict:
     value_str, body, source = None, "", ""
     if art_url:                              # 1) valor real desde la nota de cierre de Emol
         body = fetch_article_body(art_url)
+    if art_url and "cierr" in (art_title or "").lower():   # una nota de la mañana NO es el cierre
         val, _ = extract_dollar_value(body)
         if val:
             value_str, source = _fmt(val), "cierre"
@@ -301,7 +302,7 @@ def get_emol_dollar() -> dict:
     # de Emol), para explicar por qué el dólar está en ese nivel y cómo llegó ahí.
     if notes:
         context = "\n\n".join(f"[{n['label']} · {n['when']}] {n['title']}. {n['text']}" for n in notes)
-        body = (f"[NOTA DE CIERRE DE HOY] {body}\n\n{context}" if body else context)
+        body = (f"[{'NOTA DE CIERRE DE HOY' if source == 'cierre' else 'NOTA DE HOY'}] {body}\n\n{context}" if body else context)
         if not art_url:
             today_notes = [n for n in notes if n["is_today"]]
             if today_notes:
